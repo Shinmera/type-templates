@@ -11,6 +11,7 @@
    #:format-name
    #:compose-name
    #:enumerate-combinations
+   #:return-type
    #:define-type-with-converter)
   ;; type.lisp
   (:export
@@ -24,8 +25,10 @@
    #:place
    #:instances
    #:template-type
+   #:places
    #:define-type-instance
    #:define-template-type
+   #:field
    #:type-alias
    #:define-type-alias)
   ;; template.lisp
