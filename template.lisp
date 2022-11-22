@@ -15,6 +15,7 @@
       `(defmacro ,(compose-name #\- 'define name) (,@template-args &optional (,macro-name))
          (flet ((template-unfulfillable ()
                   (error 'template-unfulfillable :template ',name :arguments (list ,@template-args))))
+           (declare (ignorable #'template-unfulfillable))
            (let ((body (progn ,@body))
                  (name (or ,macro-name (compose-name #\/ ',name ,@(loop for arg in template-args
                                                                         when (char= #\< (char (string arg) 0))
