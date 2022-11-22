@@ -23,6 +23,7 @@
    #:constructor
    #:lisp-type
    #:place
+   #:place-type
    #:instances
    #:template-type
    #:places
