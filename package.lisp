@@ -16,15 +16,23 @@
   ;; type.lisp
   (:export
    #:template-unfulfillable
-   #:no-such-place
+   #:no-such-slot
    #:not-a-template-type
    #:type-instance
    #:template-arguments
    #:constructor
    #:lisp-type
+   #:slots
+   #:slot
    #:place
+   #:place-form
    #:place-type
    #:instances
+   #:slot
+   #:names
+   #:accessor
+   #:value
+   #:read-only
    #:template-type
    #:places
    #:define-type-instance
