@@ -1,14 +1,8 @@
-#|
- This file is a part of type-templates
- (c) 2020 Shirakumo http://tymoon.eu (shinmera@tymoon.eu)
- Author: Nicolas Hafner <shinmera@tymoon.eu>
-|#
-
 (asdf:defsystem type-templates
   :version "4.0.0"
   :license "zlib"
-  :author "Nicolas Hafner <shinmera@tymoon.eu>"
-  :maintainer "Nicolas Hafner <shinmera@tymoon.eu>"
+  :author "Yukari Hafner <shinmera@tymoon.eu>"
+  :maintainer "Yukari Hafner <shinmera@tymoon.eu>"
   :description "A library for defining and expanding templated functions"
   :homepage "https://Shinmera.github.io/type-templates/"
   :bug-tracker "https://github.com/Shinmera/type-templates/issues"
