@@ -18,6 +18,7 @@
    #:lisp-type
    #:slots
    #:slot
+   #:realized-slot-p
    #:place
    #:place-form
    #:place-type

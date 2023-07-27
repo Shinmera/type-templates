@@ -13,5 +13,6 @@
                (:file "type")
                (:file "template")
                (:file "documentation"))
-  :depends-on (:documentation-utils)
+  :depends-on (:documentation-utils
+               :form-fiddle)
   :in-order-to ((asdf:test-op (asdf:test-op :type-templates-test))))
