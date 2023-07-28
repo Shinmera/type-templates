@@ -139,6 +139,7 @@
                  `(write (list ',(first make-object)
                                ,@(loop for slot-name in (second make-object)
                                        for slot = (find slot-name slots :key #'names :test #'member)
+                                       when slot
                                        collect `(,(accessor slot) ,name)))
                          :stream stream))
                 (T
@@ -153,7 +154,7 @@
                                      when (realized-slot-p slot)
                                      collect `(,(accessor slot) ,name))))
 
-       ,@(when make-object
+       ,@(when (cddr make-object)
            `((defun ,(first make-object) ,(second make-object)
                (,constructor ,@(cddr make-object)))))
 
