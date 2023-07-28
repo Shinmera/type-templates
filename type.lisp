@@ -177,7 +177,7 @@
          (defclass ,class (template-type)
            ((instances :initform () :accessor instances :allocation :class)
             ,@(loop for arg in template-args
-                    collect `(,arg :initform (error "template argument missing")
+                    collect `(,arg :initform (error ,(format NIL "Template argument ~s missing" arg))
                                    :initarg ,arg
                                    :reader ,arg))))
 
