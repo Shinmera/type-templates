@@ -47,7 +47,7 @@
                                          (destructuring-bind (rettype . body) (rest (nth rest parts))
                                            (if (eql T rettype)
                                                `(progn ,@body)
-                                               `(the ,rettype (progn ,@body))))))))))
+                                               `(the (values ,rettype &optional) (progn ,@body))))))))))
       (emit-dispatch args tree))))
 
 (defmacro define-type-dispatch (name args &body expansions)
