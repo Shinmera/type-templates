@@ -81,12 +81,21 @@
                           (dbg "Expanding transform (~a~{ ~a~})" ',name ',opttypes)
                           ',@body)))))
 
+(defmacro define-dependent-dispatch-type (name (type-list i &rest args) &body body)
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (defun ,name (,type-list ,i ,@args)
+       (declare (ignorable ,type-list ,i))
+       ,@body)))
+
 (defun enumerate-template-type-combinations (types)
   (labels ((expand-type (type)
              (cond ((integerp type)
                     (list type))
                    ((listp type)
-                    (loop for sub in type append (expand-type sub)))
+                    (if (eql 'function (first type))
+                        (lambda (types i)
+                          (apply (fdefinition (first (second type))) types i (rest (second type))))
+                        (loop for sub in type append (expand-type sub))))
                    ((vectorp type)
                     (list type))
                    ((subtypep type 'template-type)
@@ -97,10 +106,14 @@
       ;; Perform back substitution of positional types
       (dolist (types expanded expanded)
         (loop for cons on types
-              do (cond ((integerp (car cons))
-                        (setf (car cons) (nth (car cons) types)))
-                       ((vectorp (car cons))
-                        (setf (car cons) (nth (aref (car cons) 1) (template-arguments (nth (aref (car cons) 0) types)))))))))))
+              for i from 0
+              do (typecase (car cons)
+                   (integer
+                    (setf (car cons) (nth (car cons) types)))
+                   (vector
+                    (setf (car cons) (nth (aref (car cons) 1) (template-arguments (nth (aref (car cons) 0) types)))))
+                   (function
+                    (setf (car cons) (funcall (car cons) types i)))))))))
 
 (defun determine-template-arguments (types)
   (remove-duplicates

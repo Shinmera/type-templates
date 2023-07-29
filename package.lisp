@@ -30,6 +30,7 @@
    #:read-only
    #:template-type
    #:places
+   #:define-dependent-dispatch-type
    #:define-type-instance
    #:define-template-type
    #:field
