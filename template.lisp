@@ -118,11 +118,15 @@
     `(define-type-dispatch ,name ,args
        ,@(loop for (types template . template-args) in expansions
                append (loop for type in (enumerate-template-type-combinations types)
-                            collect (if (listp template)
-                                        `(,(mapcar #'lisp-type type) T
-                                          (,(apply #'compose-name #\/ (car template) (full-template-args type (rest template))) ,@template-args))
-                                        `(,(mapcar #'lisp-type type) T
-                                          (,(apply #'compose-name #\/ template (full-template-args type template-args)) ,@(lambda-list-variables args)))))))))
+                            for form = (if (listp template)
+                                           `(,(mapcar #'lisp-type type) T
+                                             (,(apply #'compose-name #\/ (car template) (full-template-args type (rest template))) ,@template-args))
+                                           `(,(mapcar #'lisp-type type) T
+                                             (,(apply #'compose-name #\/ template (full-template-args type template-args)) ,@(lambda-list-variables args))))
+                            if (fboundp (car (third form)))
+                            collect form
+                            else do (alexandria:simple-style-warning "Dispatch omitted for ~a as the raw function is undefined."
+                                                                     (car (third form))))))))
 
 ;; NOTE: this does not work with &REST as we cannot automatically deal with
 ;;       conversion or deconversion of variadic arguments as a list in the

@@ -14,5 +14,6 @@
                (:file "template")
                (:file "documentation"))
   :depends-on (:documentation-utils
+               :alexandria
                :form-fiddle)
   :in-order-to ((asdf:test-op (asdf:test-op :type-templates-test))))
