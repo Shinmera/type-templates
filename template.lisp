@@ -51,14 +51,21 @@
       (emit-dispatch args tree))))
 
 (defmacro define-type-dispatch (name args &body expansions)
-  (let ((argvars (lambda-list-variables args)))
+  (let ((argvars (lambda-list-variables args))
+        (argtypes (loop for i from 0 below (length args)
+                        for arg = (nth i args)
+                        collect (if (find arg lambda-list-keywords)
+                                    arg
+                                    `(or ,@(loop for (args) in expansions collect (nth i args))))))
+        (rettype `(or ,@(loop for (args rettype) in expansions collect rettype))))
     `(progn
        #-sbcl (declaim (inline ,name))
+       #-sbcl (declare (ftype (function ,argtypes (values ,rettype &optional)) ,name))
        (defun ,name ,args
          (declare (optimize speed (debug 1) (safety 1) (compilation-speed 0)))
          ,(emit-type-dispatch argvars expansions))
        #+sbcl
-       (sb-c:defknown ,name ,(loop for arg in args collect (if (find arg lambda-list-keywords) arg '*)) *
+       (sb-c:defknown ,name ,argtypes ,rettype
            (sb-c:any)
          :overwrite-fndb-silently T)
        #++
