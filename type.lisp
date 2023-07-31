@@ -102,6 +102,12 @@
           (T
            (error 'not-a-template-type :type base)))))
 
+(defmethod template-type ((type template-type))
+  type)
+
+(defmethod template-type ((name symbol))
+  (template-type (find-class name)))
+
 (defmacro define-type-instance ((template-type name) &body args)
   `(let ((instance (make-instance ',template-type :lisp-type ',name ,@args)))
      (setf (instances instance) (list* instance (remove ',name (instances instance) :key #'lisp-type)))
@@ -126,13 +132,29 @@
        (declaim (inline ,constructor ,@(enlist (first make-object)) ,@(mapcar #'accessor slots)))
        (defstruct (,name 
                    ,@(when include `((:include ,include)))
-                   (:constructor ,constructor ,(mapcar #'accessor (remove-if-not #'realized-slot-p slots)))
+                   (:constructor ,constructor
+                       (,@(when include (mapcar #'accessor (remove-if-not #'realized-slot-p (slots (type-instance include)))))
+                        ,@(mapcar #'accessor (remove-if-not #'realized-slot-p slots))))
                    (:copier ,(compose-name #\- name 'copy))
                    (:predicate ,(compose-name #\- name 'p))
                    (:conc-name NIL))
          ,@(loop for slot in slots
                  when (realized-slot-p slot)
                  collect `(,(accessor slot) NIL :type ,(lisp-type slot) :read-only ,(read-only slot))))
+
+       (defmethod template-type ((,name ,name))
+         (find-class ',parent))
+
+       (defmethod template-type ((,name (eql (find-class ',name))))
+         (find-class ',parent))
+
+       (defmethod type-instance ((,name ,name) &rest args)
+         (declare (ignore args))
+         (type-instance (find-class ',name)))
+
+       (defmethod type-instance ((,name (eql (find-class ',name))) &rest args)
+         (declare (ignore args))
+         (type-instance ',parent ,@(loop for (k v) on template-args by #'cddr collect `',v)))
 
        (defmethod print-object ((,name ,name) stream)
          ,(cond (print-object
