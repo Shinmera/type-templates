@@ -109,7 +109,7 @@
        (declare (ignore args))
        instance)))
 
-(defun emit-template-type (parent name slots template-args &key print-object make-object)
+(defun emit-template-type (parent name slots template-args &key print-object make-object include)
   (let ((constructor (compose-name NIL '% name)))
     `(eval-when (:compile-toplevel :load-toplevel :execute)
        (define-type-instance (,parent ,name)
@@ -124,10 +124,12 @@
 
        (export '(,name ,(compose-name #\- name 'copy) ,(compose-name #\- name 'p) ,@(mapcar #'accessor slots)))
        (declaim (inline ,constructor ,@(enlist (first make-object)) ,@(mapcar #'accessor slots)))
-       (defstruct (,name (:constructor ,constructor ,(mapcar #'accessor (remove-if-not #'realized-slot-p slots)))
-                         (:copier ,(compose-name #\- name 'copy))
-                         (:predicate ,(compose-name #\- name 'p))
-                         (:conc-name NIL))
+       (defstruct (,name 
+                   ,@(when include `((:include ,include)))
+                   (:constructor ,constructor ,(mapcar #'accessor (remove-if-not #'realized-slot-p slots)))
+                   (:copier ,(compose-name #\- name 'copy))
+                   (:predicate ,(compose-name #\- name 'p))
+                   (:conc-name NIL))
          ,@(loop for slot in slots
                  when (realized-slot-p slot)
                  collect `(,(accessor slot) NIL :type ,(lisp-type slot) :read-only ,(read-only slot))))
@@ -172,18 +174,29 @@
 (defmacro define-template-type (name template-args name-constructor &body body)
   (let ((slots (gensym "SLOTS"))
         (class (compose-name #\- name 'type)))
-    (form-fiddle:with-body-options (body options) body
+    (form-fiddle:with-body-options (body options include) body
       `(eval-when (:compile-toplevel :load-toplevel :execute)
-         (defclass ,class (template-type)
+         (defclass ,class (,(if include (first include) 'template-type))
            ((instances :initform () :accessor instances :allocation :class)
+            ,@(loop for arg in (rest include)
+                    for i from 0
+                    when (constantp arg)
+                    collect `(,(nth i (template-arguments (find-class (first include))))
+                              :initform ,arg))
             ,@(loop for arg in template-args
-                    collect `(,arg :initform (error ,(format NIL "Template argument ~s missing" arg))
-                                   :initarg ,arg
-                                   :reader ,arg))))
+                    collect `(,(or (when include (find arg (template-arguments (find-class (first include))) :test #'string=))
+                                   arg)
+                              :initform (error ,(format NIL "Template argument ~s missing" arg))
+                              :initarg ,arg
+                              :reader ,arg))))
 
+         (defmethod template-arguments ((,class (eql (find-class ',class))))
+           ',template-args)
          (defmethod template-arguments ((,class ,class))
            (list ,@(loop for arg in template-args
                          collect `(,arg ,class))))
+
+         ;; FIXME: how to include other slots from the parent??? 
 
          (defmacro ,(compose-name #\- 'define name) ,template-args
            (let ((,slots ()))
@@ -197,6 +210,9 @@
                                    (loop for arg in (list ,@template-args)
                                          for temp in ',template-args
                                          collect temp collect arg)
+                                   :include ,(if include 
+                                                 `(lisp-type (type-instance ',(first include) ,@(rest include)))
+                                                 NIL)
                                    ,@options))))))))
 
 (defclass type-alias (template-type)
