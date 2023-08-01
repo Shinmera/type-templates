@@ -17,6 +17,9 @@
    #:constructor
    #:lisp-type
    #:slots
+   #:direct-slots
+   #:compute-slots
+   #:compute-type-instance-definition
    #:slot
    #:realized-slot-p
    #:place

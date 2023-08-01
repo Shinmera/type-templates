@@ -28,6 +28,7 @@
 (defgeneric direct-slots (template-type))
 (defgeneric compute-slots (template-type)
   (:method-combination append :most-specific-last))
+(defgeneric compute-type-instance-definition (template-type))
 (defgeneric slot (template-type qualifier))
 (defgeneric place (template-type qualifier))
 (defgeneric place-form (template-type qualifier var))
@@ -187,34 +188,13 @@
 
      (define-type-instance-struct ,template-type ,name)))
 
-(defun emit-template-type (parent name template-args &key print-object make-object include)
+(defun emit-template-type (parent name template-args include)
   (let ((constructor (compose-name NIL '% name)))
     `(eval-when (:compile-toplevel :load-toplevel :execute)
        (define-type-instance (,parent ,name)
          :constructor ,constructor
          :parent ,include
-         ,@template-args)
-
-       #++
-       (defmethod print-object ((,name ,name) stream)
-         ,(cond (print-object
-                 (funcall print-object name 'stream slots))
-                (make-object
-                 `(write (list ',(first make-object)
-                               ,@(loop for slot-name in (second make-object)
-                                       for slot = (find slot-name slots :key #'names :test #'member)
-                                       when slot
-                                       collect `(,(accessor slot) ,name)))
-                         :stream stream))
-                (T
-                 `(write (list ',constructor ,@(loop for slot in slots 
-                                                     when (realized-slot-p slot)
-                                                     collect `(,(accessor slot) ,name)))
-                         :stream stream))))
-       #++
-       ,@(when (cddr make-object)
-           `((defun ,(first make-object) ,(second make-object)
-               (,constructor ,@(cddr make-object))))))))
+         ,@template-args))))
 
 (defmacro define-template-type (name template-args name-constructor &body body)
   (let ((slots (gensym "SLOTS"))
@@ -263,9 +243,9 @@
                                (loop for arg in (list ,@template-args)
                                      for temp in ',template-args
                                      collect temp collect arg)
-                               :include ,(if include 
-                                             `(lisp-type (type-instance ',(first include) ,@(rest include)))
-                                             NIL)
+                               ,(if include
+                                    `(lisp-type (type-instance ',(first include) ,@(rest include)))
+                                    NIL)
                                ,@options))))))
 
 (defclass type-alias (template-type)
