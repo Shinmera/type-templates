@@ -103,3 +103,9 @@
                  ,@',conversion))
              `(let ((,',value ,,valueg))
                 ,@',conversion))))))
+
+(defun union* (&rest lists)
+  (let ((result ()))
+    (dolist (list lists (nreverse result))
+      (dolist (element list)
+        (pushnew element result)))))

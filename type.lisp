@@ -97,11 +97,24 @@
 (defmethod place-type ((type template-type) qualifier)
   (lisp-type (slot type qualifier)))
 
+(defmethod template-type ((type template-type))
+  type)
+
+(defmethod template-arguments ((type template-type))
+  (loop for slot in (template-arguments (class-of type))
+        collect (slot-value type slot)))
+
 (defmethod instances ((type class))
   (instances (allocate-instance type)))
 
 (defmethod instances ((type symbol))
   (instances (find-class type)))
+
+(defmethod template-arguments ((type symbol))
+  (template-arguments (find-class type)))
+
+(defmethod template-type ((name symbol))
+  (template-type (find-class name)))
 
 (defmethod type-instance ((base symbol) &rest template-args)
   (let ((class (find-class base)))
@@ -109,12 +122,6 @@
            (apply #'type-instance (allocate-instance (find-class base)) template-args))
           (T
            (error 'not-a-template-type :type base)))))
-
-(defmethod template-type ((type template-type))
-  type)
-
-(defmethod template-type ((name symbol))
-  (template-type (find-class name)))
 
 (defstruct (type-object
             (:constructor NIL)
@@ -127,6 +134,9 @@
 (defmethod type-instance ((object type-object) &rest args)
   (apply #'type-instance (class-of object) args))
 
+(defmethod template-arguments ((object type-object))
+  (template-arguments (type-instance object)))
+
 (defmethod compute-type-instance-definition ((type template-type))
   (let ((name (lisp-type type))
         (include (parent type))
@@ -137,9 +147,7 @@
        (declaim (inline ,constructor ,@(mapcar #'accessor slots)))
        (defstruct (,name 
                    (:include ,(or include 'type-object))
-                   (:constructor ,constructor
-                       (,@(when include (mapcar #'accessor (remove-if-not #'realized-slot-p (slots type))))
-                        ,@(mapcar #'accessor (remove-if-not #'realized-slot-p slots))))
+                   (:constructor ,constructor ,(mapcar #'accessor (remove-if-not #'realized-slot-p (slots type))))
                    (:copier ,(compose-name #\- name 'copy))
                    (:predicate ,(compose-name #\- name 'p))
                    (:conc-name NIL))
@@ -216,22 +224,23 @@
                               :reader ,arg))))
 
          (defmethod template-arguments ((,class (eql (find-class ',class))))
-           ',template-args)
-         
-         (defmethod template-arguments ((,class ,class))
-           (list ,@(loop for arg in template-args
-                         collect `(,arg ,class))))
+           ,(if include
+                `(union* (template-arguments ',(first include))
+                         ',(loop for arg in template-args
+                                 collect (or (find arg (template-arguments (find-class (first include))) :test #'string=) arg)))
+                `',template-args))
          
          (flet ((,slots (,class)
-                  (let ((,slots ()))
-                    (destructuring-bind ,template-args (template-arguments ,class)
-                      (labels ((field (name &rest args &key type alias &allow-other-keys)
-                                 (remf args :type)
-                                 (remf args :alias)
-                                 (push (apply #'make-instance 'slot :accessor name :lisp-type type :names (enlist alias) args)
-                                       ,slots)))
-                        ,@body
-                        (nreverse ,slots))))))
+                  (let ((,slots ())
+                        ,@(loop for arg in template-args
+                                collect `(,arg (,arg ,class))))
+                    (labels ((field (name &rest args &key type alias &allow-other-keys)
+                               (remf args :type)
+                               (remf args :alias)
+                               (push (apply #'make-instance 'slot :accessor name :lisp-type type :names (enlist alias) args)
+                                     ,slots)))
+                      ,@body
+                      (nreverse ,slots)))))
            (defmethod direct-slots ((,class ,class))
              (,slots ,class))
            
