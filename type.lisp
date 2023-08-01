@@ -25,6 +25,9 @@
 (defgeneric constructor (template-type))
 (defgeneric lisp-type (template-type))
 (defgeneric slots (template-type))
+(defgeneric direct-slots (template-type))
+(defgeneric compute-slots (template-type)
+  (:method-combination append :most-specific-last))
 (defgeneric slot (template-type qualifier))
 (defgeneric place (template-type qualifier))
 (defgeneric place-form (template-type qualifier var))
@@ -53,8 +56,12 @@
 
 (defclass template-type ()
   ((lisp-type :initarg :lisp-type :initform (error "lisp-type argument missing.") :reader lisp-type)
+   (parent :initarg :parent :initform NIL :reader parent)
    (constructor :initarg :constructor :initform (error "constructor argument missing.") :reader constructor)
-   (slots :initarg :slots :initform (error "SLOTS required") :reader slots)))
+   (slots :initarg :slots :initform () :reader slots)))
+
+(defmethod shared-initialize :after ((type template-type) slots &key)
+  (setf (slot-value type 'slots) (compute-slots type)))
 
 (defmethod print-object ((type template-type) stream)
   (print-unreadable-object (type stream :type T)
@@ -108,32 +115,29 @@
 (defmethod template-type ((name symbol))
   (template-type (find-class name)))
 
-(defmacro define-type-instance ((template-type name) &body args)
-  `(let ((instance (make-instance ',template-type :lisp-type ',name ,@args)))
-     (setf (instances instance) (list* instance (remove ',name (instances instance) :key #'lisp-type)))
-     (defmethod type-instance ((type (eql ',name)) &rest args)
-       (declare (ignore args))
-       instance)))
+(defstruct (type-object
+            (:constructor NIL)
+            (:copier NIL)
+            (:predicate NIL)))
 
-(defun emit-template-type (parent name slots template-args &key print-object make-object include)
-  (let ((constructor (compose-name NIL '% name)))
-    `(eval-when (:compile-toplevel :load-toplevel :execute)
-       (define-type-instance (,parent ,name)
-         :constructor ',(compose-name NIL '% name)
-         :slots (list ,@(loop for slot in slots
-                              collect `(make-instance 'slot ,@(loop for s in '(names accessor lisp-type value read-only computed)
-                                                                    when (slot-boundp slot s)
-                                                                    collect (intern (string s) "KEYWORD")
-                                                                    when (slot-boundp slot s)
-                                                                    collect `',(slot-value slot s)))))
-         ,@(loop for arg in template-args collect `',arg))
+(defmethod template-type ((object type-object))
+  (template-type (class-of object)))
 
+(defmethod type-instance ((object type-object) &rest args)
+  (apply #'type-instance (class-of object) args))
+
+(defmethod compute-type-instance-definition ((type template-type))
+  (let ((name (lisp-type type))
+        (include (parent type))
+        (constructor (constructor type))
+        (slots (direct-slots type)))
+    `(progn
        (export '(,name ,(compose-name #\- name 'copy) ,(compose-name #\- name 'p) ,@(mapcar #'accessor slots)))
-       (declaim (inline ,constructor ,@(enlist (first make-object)) ,@(mapcar #'accessor slots)))
+       (declaim (inline ,constructor ,@(mapcar #'accessor slots)))
        (defstruct (,name 
-                   ,@(when include `((:include ,include)))
+                   (:include ,(or include 'type-object))
                    (:constructor ,constructor
-                       (,@(when include (mapcar #'accessor (remove-if-not #'realized-slot-p (slots (type-instance include)))))
+                       (,@(when include (mapcar #'accessor (remove-if-not #'realized-slot-p (slots type))))
                         ,@(mapcar #'accessor (remove-if-not #'realized-slot-p slots))))
                    (:copier ,(compose-name #\- name 'copy))
                    (:predicate ,(compose-name #\- name 'p))
@@ -142,20 +146,56 @@
                  when (realized-slot-p slot)
                  collect `(,(accessor slot) NIL :type ,(lisp-type slot) :read-only ,(read-only slot))))
 
-       (defmethod template-type ((,name ,name))
-         (find-class ',parent))
-
        (defmethod template-type ((,name (eql (find-class ',name))))
-         (find-class ',parent))
-
-       (defmethod type-instance ((,name ,name) &rest args)
-         (declare (ignore args))
-         (type-instance (find-class ',name)))
+         (find-class ',(type-of type)))
 
        (defmethod type-instance ((,name (eql (find-class ',name))) &rest args)
          (declare (ignore args))
-         (type-instance ',parent ,@(loop for (k v) on template-args by #'cddr collect `',v)))
+         (type-instance ',(type-of type) ,@(loop for arg in (template-arguments type) collect `',arg)))
 
+       (defmethod make-load-form ((,name ,name) &optional env)
+         (declare (ignore env))
+         (list ',constructor ,@(loop for slot in slots
+                                     when (realized-slot-p slot)
+                                     collect `(,(accessor slot) ,name))))
+
+       ,@(loop for slot in slots
+               unless (realized-slot-p slot)
+               collect `(defun ,(accessor slot) (,name)
+                          ,@(if (computed slot)
+                                (list (funcall (compile NIL (value slot)) name))
+                                `((declare (ignore ,name))
+                                  (value slot))))
+               unless (or (realized-slot-p slot) (read-only slot))
+               collect `(defun (setf ,(accessor slot)) (value ,name)
+                          (setf ,(funcall (compile NIL (value slot)) name) value))))))
+
+(defmacro define-type-instance-struct (template-type type-name)
+  (let ((type (or (find type-name (instances template-type) :key #'lisp-type)
+                  (error "No instance of ~s known with name ~s" template-type type-name))))
+    (compute-type-instance-definition type)))
+
+(defmacro define-type-instance ((template-type name) &body args)
+  (let ((instance (apply #'make-instance template-type :lisp-type name args)))
+    (setf (instances instance) (list* instance (remove name (instances instance) :key #'lisp-type))))
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (let ((instance (make-instance ',template-type :lisp-type ',name ,@(loop for arg in args collect `',arg))))
+       (setf (instances instance) (list* instance (remove ',name (instances instance) :key #'lisp-type)))
+       (defmethod type-instance ((type (eql ',name)) &rest args)
+         (declare (ignore args))
+         instance))
+
+     (define-type-instance-struct ,template-type ,name)))
+
+(defun emit-template-type (parent name template-args &key print-object make-object include)
+  (let ((constructor (compose-name NIL '% name)))
+    `(eval-when (:compile-toplevel :load-toplevel :execute)
+       (define-type-instance (,parent ,name)
+         :constructor ,constructor
+         :parent ,include
+         ,@template-args)
+
+       #++
        (defmethod print-object ((,name ,name) stream)
          ,(cond (print-object
                  (funcall print-object name 'stream slots))
@@ -171,27 +211,10 @@
                                                      when (realized-slot-p slot)
                                                      collect `(,(accessor slot) ,name)))
                          :stream stream))))
-
-       (defmethod make-load-form ((,name ,name) &optional env)
-         (declare (ignore env))
-         (list ',constructor ,@(loop for slot in slots
-                                     when (realized-slot-p slot)
-                                     collect `(,(accessor slot) ,name))))
-
+       #++
        ,@(when (cddr make-object)
            `((defun ,(first make-object) ,(second make-object)
-               (,constructor ,@(cddr make-object)))))
-
-       ,@(loop for slot in slots
-               unless (realized-slot-p slot)
-               collect `(defun ,(accessor slot) (,name)
-                          ,@(if (computed slot)
-                                (list (funcall (compile NIL (value slot)) name))
-                                `((declare (ignore ,name))
-                                  (value slot))))
-               unless (or (realized-slot-p slot) (read-only slot))
-               collect `(defun (setf ,(accessor slot)) (value ,name)
-                          (setf ,(funcall (compile NIL (value slot)) name) value))))))
+               (,constructor ,@(cddr make-object))))))))
 
 (defmacro define-template-type (name template-args name-constructor &body body)
   (let ((slots (gensym "SLOTS"))
@@ -214,28 +237,36 @@
 
          (defmethod template-arguments ((,class (eql (find-class ',class))))
            ',template-args)
+         
          (defmethod template-arguments ((,class ,class))
            (list ,@(loop for arg in template-args
                          collect `(,arg ,class))))
-
-         ;; FIXME: how to include other slots from the parent??? 
+         
+         (flet ((,slots (,class)
+                  (let ((,slots ()))
+                    (destructuring-bind ,template-args (template-arguments ,class)
+                      (labels ((field (name &rest args &key type alias &allow-other-keys)
+                                 (remf args :type)
+                                 (remf args :alias)
+                                 (push (apply #'make-instance 'slot :accessor name :lisp-type type :names (enlist alias) args)
+                                       ,slots)))
+                        ,@body
+                        (nreverse ,slots))))))
+           (defmethod direct-slots ((,class ,class))
+             (,slots ,class))
+           
+           (defmethod compute-slots append ((,class ,class))
+             (,slots ,class)))
 
          (defmacro ,(compose-name #\- 'define name) ,template-args
-           (let ((,slots ()))
-             (labels ((field (name &rest args &key type alias &allow-other-keys)
-                        (remf args :type)
-                        (remf args :alias)
-                        (push (apply #'make-instance 'slot :accessor name :lisp-type type :names (enlist alias) args)
-                              ,slots)))
-               ,@body
-               (emit-template-type ',class ,name-constructor (nreverse ,slots)
-                                   (loop for arg in (list ,@template-args)
-                                         for temp in ',template-args
-                                         collect temp collect arg)
-                                   :include ,(if include 
-                                                 `(lisp-type (type-instance ',(first include) ,@(rest include)))
-                                                 NIL)
-                                   ,@options))))))))
+           (emit-template-type ',class ,name-constructor
+                               (loop for arg in (list ,@template-args)
+                                     for temp in ',template-args
+                                     collect temp collect arg)
+                               :include ,(if include 
+                                             `(lisp-type (type-instance ',(first include) ,@(rest include)))
+                                             NIL)
+                               ,@options))))))
 
 (defclass type-alias (template-type)
   ((instances :initform () :accessor instances :allocation :class)
