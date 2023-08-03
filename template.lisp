@@ -53,9 +53,11 @@
 (defmacro define-type-dispatch (name args &body expansions)
   (let* ((argvars (lambda-list-variables args))
          (expansions (loop for expansion in expansions
-                           collect (list* (append (first expansion)
-                                                  (make-list (- (length argvars) (length (first expansion)))
-                                                             :initial-element 'null))
+                           for deficit = (- (length argvars) (length (first expansion)))
+                           do (when (< deficit 0)
+                                (error "Dispatch expansion~%  ~s~%contains more variables than specified in the arglist."
+                                       expansion))
+                           collect (list* (append (first expansion) (make-list deficit :initial-element 'null))
                                           (rest expansion))))
          (argtypes (loop with i = -1
                          for arg in args
