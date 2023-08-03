@@ -125,6 +125,8 @@
               for i from 0
               do (typecase (car cons)
                    (integer
+                    (when (= (car cons) i)
+                      (error "Positional reference cannot refer to itself!"))
                     (setf (car cons) (nth (car cons) types)))
                    (vector
                     (setf (car cons) (nth (aref (car cons) 1) (template-arguments (nth (aref (car cons) 0) types)))))
