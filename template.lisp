@@ -51,13 +51,20 @@
       (emit-dispatch args tree))))
 
 (defmacro define-type-dispatch (name args &body expansions)
-  (let ((argvars (lambda-list-variables args))
-        (argtypes (loop for i from 0 below (length args)
-                        for arg = (nth i args)
-                        collect (if (find arg lambda-list-keywords)
-                                    arg
-                                    `(or ,@(loop for (args) in expansions collect (nth i args))))))
-        (rettype `(or ,@(loop for (args rettype) in expansions collect rettype))))
+  (let* ((argvars (lambda-list-variables args))
+         (expansions (loop for expansion in expansions
+                           collect (list* (append (first expansion)
+                                                  (make-list (- (length argvars) (length (first expansion)))
+                                                             :initial-element 'null))
+                                          (rest expansion))))
+         (argtypes (loop with i = -1
+                         for arg in args
+                         collect (cond ((find arg lambda-list-keywords)
+                                        arg)
+                                       (T
+                                        (incf i)
+                                        `(or ,@(loop for (args) in expansions collect (nth i args)))))))
+         (rettype `(or ,@(loop for (args rettype) in expansions collect rettype))))
     `(progn
        #-sbcl (declaim (inline ,name))
        #-sbcl (declare (ftype (function ,argtypes (values ,rettype &optional)) ,name))
