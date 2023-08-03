@@ -88,8 +88,10 @@
 (defmacro define-type-with-converter (name base-type (value) &body conversion)
   (let ((valueg (gensym "VALUE")))
     `(progn
-       (deftype ,name ()
-         ',base-type)
+       (deftype ,name (&rest args)
+         (if args
+             (list* ',base-type (mapcar #',name args))
+             ',base-type))
        
        (declaim (ftype (function (T) ,base-type) ,name))
        (defun ,name (,value)
