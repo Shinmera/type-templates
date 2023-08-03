@@ -224,11 +224,7 @@
                               :reader ,arg))))
 
          (defmethod template-arguments ((,class (eql (find-class ',class))))
-           ,(if include
-                `(union* (template-arguments ',(first include))
-                         ',(loop for arg in template-args
-                                 collect (or (find arg (template-arguments (find-class (first include))) :test #'string=) arg)))
-                `',template-args))
+           ',template-args)
          
          (flet ((,slots (,class)
                   (let ((,slots ())
