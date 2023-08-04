@@ -139,25 +139,31 @@
          when (typep type 'template-type)
          append (template-arguments type))))
 
-(defmacro define-templated-dispatch (name args &body expansions)
-  (flet ((full-template-args (type template-args)
-           (append (loop for arg in template-args
-                         collect (if (vectorp arg)
-                                     (nth (aref arg 0) type)
-                                     arg))
-                   (determine-template-arguments type))))
-    `(define-type-dispatch ,name ,args
-       ,@(loop for (types template . template-args) in expansions
-               append (loop for type in (enumerate-template-type-combinations types)
-                            for form = (if (listp template)
-                                           `(,(mapcar #'lisp-type type) T
-                                             (,(apply #'compose-name #\/ (car template) (full-template-args type (rest template))) ,@template-args))
-                                           `(,(mapcar #'lisp-type type) T
-                                             (,(apply #'compose-name #\/ template (full-template-args type template-args)) ,@(lambda-list-variables args))))
-                            if (fboundp (car (third form)))
-                            collect form
-                            else do (alexandria:simple-style-warning "Dispatch omitted for ~a as the raw function is undefined."
-                                                                     (car (third form))))))))
+(defmacro define-templated-dispatch (name args &body body)
+  (form-fiddle:with-body-options (expansions options ignore-template-types) body
+    (assert (null options))
+    (flet ((full-template-args (types template-args)
+             (append (loop for arg in template-args
+                           collect (if (vectorp arg)
+                                       (nth (aref arg 0) types)
+                                       arg))
+                     (determine-template-arguments
+                      (loop for type in types
+                            unless (loop for ignored in ignore-template-types
+                                         thereis (eql (type-of type) ignored))
+                            collect type)))))
+      `(define-type-dispatch ,name ,args
+         ,@(loop for (types template . template-args) in expansions
+                 append (loop for type in (enumerate-template-type-combinations types)
+                              for form = (if (listp template)
+                                             `(,(mapcar #'lisp-type type) T
+                                               (,(apply #'compose-name #\/ (car template) (full-template-args type (rest template))) ,@template-args))
+                                             `(,(mapcar #'lisp-type type) T
+                                               (,(apply #'compose-name #\/ template (full-template-args type template-args)) ,@(lambda-list-variables args))))
+                              if (fboundp (car (third form)))
+                              collect form
+                              else do (alexandria:simple-style-warning "Dispatch omitted for ~a as the raw function is undefined."
+                                                                       (car (third form)))))))))
 
 ;; NOTE: this does not work with &REST as we cannot automatically deal with
 ;;       conversion or deconversion of variadic arguments as a list in the

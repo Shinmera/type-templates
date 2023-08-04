@@ -114,7 +114,9 @@
   (template-arguments (find-class type)))
 
 (defmethod template-type ((name symbol))
-  (template-type (find-class name)))
+  (if (subtypep name 'template-type)
+      (find-class name)
+      (template-type (find-class name))))
 
 (defmethod type-instance ((base symbol) &rest template-args)
   (let ((class (find-class base)))
