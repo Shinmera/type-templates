@@ -34,10 +34,48 @@
                            (template-unfulfillable () NIL))
                     collect `(,template ,@combination ,@(if name (list (apply #'format-name name combination))))))))
 
+(defun merge-identical-branches (branches)
+  (labels ((recurse (branches)
+             (let ((pure ()))
+               (loop for (tt . sub) in branches
+                     for entry = (assoc tt pure)
+                     do (cond (entry
+                               ;; Don't merge if the leaf is a branch target and instead
+                               ;; prefer the earlier branch target always.
+                               (when (consp sub)
+                                 (setf (cdr entry) (append (cdr entry) sub))))
+                              (T
+                               (push (cons tt sub) pure))))
+               (setf branches (reverse pure)))
+             (loop for cons in branches
+                   do (when (consp (cdr cons))
+                        (setf (cdr cons) (recurse (cdr cons)))))
+             branches))
+    (recurse branches)))
+
+(defun duplicate-subtype-branches (branches)
+  (labels ((recurse (branches)
+             (loop for branch in branches
+                   for tt = (car branch)
+                   do (loop for (ott . osub) in branches
+                            do (when (and (not (eq tt ott))
+                                          (subtypep tt ott))
+                                 ;; If this is a subtype, clone all branches of the supertype
+                                 (setf (cdr (last branch)) (copy-tree osub)))))
+             (loop for (tt . sub) in branches
+                   do (when (consp sub) (recurse sub)))
+             branches))
+    (recurse branches)))
+
 (defun emit-type-dispatch (args parts)
-  (let ((tree (prefix-tree (loop for (type rettype . expansion) in parts
-                                 for i from 0
-                                 collect (append type i)))))
+  ;; FIXME: This does not work right if the types are not disjoint and multiple tree branches could
+  ;;        be taken. Subtype relationships must be respected
+  (let ((tree (merge-identical-branches
+               (duplicate-subtype-branches
+                (prefix-tree
+                 (loop for (type rettype . expansion) in parts
+                       for i from 0
+                       collect (append type i)))))))
     (labels ((emit-dispatch (args types)
                `(etypecase ,(first args)
                   ,@(loop for (type . rest) in types
@@ -178,7 +216,10 @@
                       ,@expansion)))
          (defun ,fun ,args
            (thunk)))
-       (define-compiler-macro ,fun ,args
+       (define-compiler-macro ,fun ,(loop for arg in args
+                                          collect (if (listp arg)
+                                                      (list (first arg) `',(second arg))
+                                                      arg))
          `(let ,(list ,@(loop for arg in argvars
                               for gen in arggens
                               collect `(list ',gen ,arg)))
