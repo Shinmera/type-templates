@@ -70,11 +70,14 @@
             (ignore-errors (template-arguments type)))))
 
 (defmethod type-instance ((type template-type) &rest targs)
-  (loop for instance in (instances type)
-        do (when (equal targs (template-arguments instance))
-             (return instance))
-        finally (error "No such type instance of~%  ~a~%with template arguments~%  ~a"
-                       (type-of type) targs)))
+  (cond ((null targs)
+         type)
+        (T
+         (loop for instance in (instances type)
+               do (when (equal targs (template-arguments instance))
+                    (return instance))
+               finally (error "No such type instance of~%  ~a~%with template arguments~%  ~a"
+                              (type-of type) targs)))))
 
 (defmethod slot ((type template-type) qualifier)
   (loop for slot in (slots type)
@@ -110,8 +113,10 @@
 (defmethod instances ((type symbol))
   (instances (find-class type)))
 
-(defmethod template-arguments ((type symbol))
-  (template-arguments (find-class type)))
+(defmethod template-arguments ((name symbol))
+  (if (subtypep name 'template-type)
+      (template-arguments (find-class name))
+      (template-arguments (type-instance name))))
 
 (defmethod template-type ((name symbol))
   (if (subtypep name 'template-type)
