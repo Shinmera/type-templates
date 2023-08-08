@@ -215,11 +215,13 @@
                                 collect `(,arg ',arg))
                       ,@expansion)))
          (defun ,fun ,args
+           ,(form-fiddle:lambda-docstring `(lambda () ,@expansion))
            (thunk)))
        (define-compiler-macro ,fun ,(loop for arg in args
                                           collect (if (listp arg)
                                                       (list (first arg) `',(second arg))
                                                       arg))
+         ,(form-fiddle:lambda-docstring `(lambda () ,@expansion))
          `(let ,(list ,@(loop for arg in argvars
                               for gen in arggens
                               collect `(list ',gen ,arg)))
