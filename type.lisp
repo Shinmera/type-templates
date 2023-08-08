@@ -181,7 +181,7 @@
                           ,@(if (computed slot)
                                 (list (funcall (compile NIL (value slot)) name))
                                 `((declare (ignore ,name))
-                                  (value slot))))
+                                  ,(value slot))))
                unless (or (realized-slot-p slot) (read-only slot))
                collect `(defun (setf ,(accessor slot)) (value ,name)
                           (setf ,(funcall (compile NIL (value slot)) name) value))))))
