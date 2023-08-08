@@ -59,7 +59,8 @@
                    for tt = (car branch)
                    do (loop for (ott . osub) in branches
                             do (when (and (not (eq tt ott))
-                                          (subtypep tt ott))
+                                          (subtypep tt ott)
+                                          (listp (cdr branch)))
                                  ;; If this is a subtype, clone all branches of the supertype
                                  (setf (cdr (last branch)) (copy-tree osub)))))
              (loop for (tt . sub) in branches
