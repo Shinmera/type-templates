@@ -44,6 +44,12 @@ This will create a function ``x`` as well as internal compiler structures to eli
 
 This macro goes through all type instances of our meta-type and emits a dispatch matching that type, with the slot's value type as the return type, and the reader form for the ``vec`` variable to read out the actual value. If you expand ``(define-slot-reader x)`` you should get the same as we manually wrote above.
 
+Because defining a slot dispatcher is such a common problem, you can also just use ``define-slot-accessor``, which will also take care of defining the corresponding writer function.
+
+:: common lisp
+(define-slot-accessor vec-type x x)
+::
+
 You can see now how this library allows you to reason about structure types and automatically compute a lot more information. To illustrate this even better, let's define a template function that'll implement the dot product.
 
 :: common lisp

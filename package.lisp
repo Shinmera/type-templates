@@ -43,6 +43,9 @@
   (:export
    #:define-template
    #:do-combinations
+   #:do-type-combinations
+   #:do-instance-combinations
    #:define-type-dispatch
    #:define-templated-dispatch
-   #:define-alias))
+   #:define-alias
+   #:define-slot-accessor))
