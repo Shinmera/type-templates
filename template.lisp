@@ -146,7 +146,7 @@
                  (T (sb-c::specifier-type T)))))
        ;; NOTE: The defoptimizer isn't needed, SBCL can derive the type on its own just fine.
        #+sbcl
-       ,@(loop for (type result . body) in expansions
+       ,@(loop for (type result . body) in (reverse expansions)
                ;; FIXME: this is not great. optional placement should be better.
                for opttypes = (remove 'null type)
                collect `(sb-c:deftransform ,name (,args ,opttypes)
