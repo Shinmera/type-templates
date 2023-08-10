@@ -102,9 +102,10 @@
                                         arg)
                                        (T
                                         (incf i)
-                                        (remove-duplicates `(or ,@(loop for (args) in expansions collect (nth i args)))
-                                                           :test #'equal)))))
-         (rettype `(or ,@(loop for (args rettype) in expansions collect rettype))))
+                                        `(or ,@(delete-duplicates (loop for (args) in expansions collect (nth i args))
+                                                                  :test #'equal))))))
+         (rettype `(or ,@(delete-duplicates (loop for (args rettype) in expansions collect rettype)
+                                            :test #'equal))))
     ;; KLUDGE: Force &rest to list
     (when (find '&rest argtypes)
       (setf (elt argtypes (1+ (position '&rest argtypes))) 'T))
@@ -203,7 +204,7 @@
                                                (,(apply #'compose-name #\/ template (full-template-args type template-args)) ,@(lambda-list-variables args))))
                               if (fboundp (car (third form)))
                               collect form
-                              else do (alexandria:simple-style-warning "Dispatch omitted for ~a as the raw function is undefined."
+                              else do (alexandria:simple-style-warning "Dispatch omitted for ~s as the raw function is undefined."
                                                                        (car (third form)))))))))
 
 ;; NOTE: this does not work with &REST as we cannot automatically deal with
