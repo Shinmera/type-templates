@@ -69,8 +69,6 @@
     (recurse branches)))
 
 (defun emit-type-dispatch (args parts)
-  ;; FIXME: This does not work right if the types are not disjoint and multiple tree branches could
-  ;;        be taken. Subtype relationships must be respected
   (let ((tree (merge-identical-branches
                (duplicate-subtype-branches
                 (prefix-tree
@@ -104,8 +102,12 @@
                                         arg)
                                        (T
                                         (incf i)
-                                        `(or ,@(loop for (args) in expansions collect (nth i args)))))))
+                                        (remove-duplicates `(or ,@(loop for (args) in expansions collect (nth i args)))
+                                                           :test #'equal)))))
          (rettype `(or ,@(loop for (args rettype) in expansions collect rettype))))
+    ;; KLUDGE: Force &rest to list
+    (when (find '&rest argtypes)
+      (setf (elt argtypes (1+ (position '&rest argtypes))) 'T))
     `(progn
        #-sbcl (declaim (inline ,name))
        #-sbcl (declare (ftype (function ,argtypes (values ,rettype &optional)) ,name))
