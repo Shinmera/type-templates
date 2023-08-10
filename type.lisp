@@ -88,14 +88,20 @@
 (defmethod place ((type template-type) qualifier)
   (accessor (slot type qualifier)))
 
+(defmethod place-form ((type template-type) (slot slot) var)
+  (cond ((realized-slot-p slot)
+         `(,(accessor slot) ,var))
+        ((computed slot)
+         (funcall (compile NIL (value slot)) var))
+        (T
+         (value slot))))
+
 (defmethod place-form ((type template-type) qualifier var)
   (let ((slot (slot type qualifier)))
-    (cond ((realized-slot-p slot)
-           `(,(accessor slot) ,var))
-          ((computed slot)
-           (funcall (compile NIL (value slot)) var))
-          (T
-           (value slot)))))
+    (place-form type slot var)))
+
+(defmethod place-type ((type template-type) (slot slot))
+  (lisp-type slot))
 
 (defmethod place-type ((type template-type) qualifier)
   (lisp-type (slot type qualifier)))

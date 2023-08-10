@@ -1,0 +1,80 @@
+# About Type-Templates
+This library allows you to define types and "template functions" that can be expanded into various type-specialised versions to eliminate runtime dispatch overhead. It was specifically designed to implement low-level numerical data types and functionality.
+
+## How To
+First, let's define a meta-type that can instantiate structure types. For an example, let's implement 3-dimensional vectors, which can hold different element types.
+
+:: common lisp
+(define-template-type vec (element-type)
+    (compose-name NIL element-type 'vec)
+  (field (compose-name NIL element-type 'vec '-x)
+         :type element-type :alias (:x))
+  (field (compose-name NIL element-type 'vec '-y)
+         :type element-type :alias (:y))
+  (field (compose-name NIL element-type 'vec '-z)
+         :type element-type :alias (:z)))
+::
+
+This creates a ``vec-type`` meta-type that describes how a ``vec`` type is created. Now let's instantiate it:
+
+:: common lisp
+(define-vec single-float)
+(define-vec double-float)
+(define-vec fixnum)
+::
+
+We should now have the structure types ``single-float-vec``, ``double-float-vec``, and ``fixnum-vec``, each with their own field accessors and direct constructors. To present an easier way for users to access the ``x``, ``y`` and ``z`` slots of the vectors, let's create a dispatch function that'll call the specific slot accessor depending on the argument type.
+
+:: common lisp
+(define-type-dispatch x (vec)
+  ((single-float-vec) single-float (single-float-vec-x vec))
+  ((double-float-vec) double-float (double-float-vec-x vec))
+  ((fixnum-vec) fixnum (fixnum-vec-x vec)))
+::
+
+This will create a function ``x`` as well as internal compiler structures to eliminate the runtime dispatch if the types are known ahead. However, you may notice that manually listing the cases like this is rather tedious. Let's create a macro to emit the type dispatcher cases for us.
+
+:: common lisp
+(defmacro define-slot-reader (slot)
+  `(define-type-dispatch ,slot (vec)
+     ,@(loop for type in (instances 'vec-type)
+             collect `((,(lisp-type type)) ,(place-type type slot)
+                       ,(place-form type slot 'vec)))))
+::
+
+This macro goes through all type instances of our meta-type and emits a dispatch matching that type, with the slot's value type as the return type, and the reader form for the ``vec`` variable to read out the actual value. If you expand ``(define-slot-reader x)`` you should get the same as we manually wrote above.
+
+You can see now how this library allows you to reason about structure types and automatically compute a lot more information. To illustrate this even better, let's define a template function that'll implement the dot product.
+
+:: common lisp
+(define-template dot element-type (a b)
+  (let ((type (type-instance 'vec-type element-type)))
+    `((declare (type ,(lisp-type type) a b)
+               (return-type ,element-type)
+               inline)
+      (+ ,@(loop for slot in (slots type)
+                 collect `(* ,(place-form type slot a) ,(place-form type slot b)))))))
+::
+
+Here we make use of the slot iteration, so conceivably the number of slots could also be made variable between ``vec-type`` instances, and this template would still operate correctly.
+
+Also notable are that the additional declarations: ``return-type`` lets you specify the return type of the resulting function the template generates, and ``inline`` lets you specify that the function should be declared inline.
+
+To now instantiate the template into actual function definitions, we could simply repeat ``define-dot`` for every element type we have, or we could do it like this:
+
+:: common lisp
+(do-type-combinations vec-type define-dot)
+::
+
+This will expand into a call to ``define-dot`` for all template arguments that were used to instantiate a ``vec-type``. The names of the functions will follow the scheme of ``dot/single-float``, ``dot/double-float``, etc.
+
+We'll now again want to define a dispatcher function as an easy entry point for the user. For template-defined functions however we can make use of another shorthand:
+
+:: common lisp
+(define-templated-dispatch dot (a b)
+  ((vec-type 0) dot))
+::
+
+The templated dispatch macro will notice the meta-type, and automatically expand it into all concrete type instances, appending the template arguments to the template name to reach the correct specific version of the template. The ``0`` here means that the second argument type should be the same as the first, meaning only ``(single-float-vec single-float-vec)``, etc. will get a branch, but not ``(single-float-vec fixnum-vec)``.
+
+With this you should have a broad overview of how to use the template system. Please refer to the individual functions used in the tutorial for further information on their capabilities.
