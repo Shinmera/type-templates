@@ -24,18 +24,19 @@
                       finally (return str)))))))
 
 (defun compose-name (separator &rest parts)
-  (intern
-   (with-output-to-string (out)
-     (flet ((s (a)
-              (let ((s (typecase a
-                         (string a)
-                         (symbol (symbol-name a))
-                         (T (princ-to-string a)))))
-                (write-string s out))))
-       (s (first parts))
-       (loop for part in (rest parts)
-             do (when separator (write-char separator out))
-                (s part))))))
+  (let ((separator (string separator)))
+    (intern
+     (with-output-to-string (out)
+       (flet ((s (a)
+                (let ((s (typecase a
+                           (string a)
+                           (symbol (symbol-name a))
+                           (T (princ-to-string a)))))
+                  (write-string s out))))
+         (s (first parts))
+         (loop for part in (rest parts)
+               do (when separator (write-string separator out))
+                  (s part)))))))
 
 (defun enumerate-combinations (&rest combinations)
   (if (cdr combinations)

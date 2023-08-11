@@ -11,6 +11,7 @@
   (:export
    #:template-unfulfillable
    #:no-such-slot
+   #:no-such-instance
    #:not-a-template-type
    #:type-instance
    #:template-arguments
@@ -32,7 +33,6 @@
    #:value
    #:read-only
    #:template-type
-   #:places
    #:type-object
    #:define-dependent-dispatch-type
    #:define-type-instance

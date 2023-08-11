@@ -1,0 +1,392 @@
+<!DOCTYPE html> <html lang="EN"> <head> <meta charset="utf-8"> <title>Type Templates</title> <style>html body{margin:0 auto 0 auto;padding:20px;max-width:1024px;font-family:sans-serif;font-size:14pt;overflow-y:scroll;}html body a{text-decoration:none;}html body a[href]{color:#0055AA;}html body a[href]:hover{color:#0088EE;}html body pre{background:#FAFAFA;border:1px solid #DDDDDD;padding:0.75em;overflow-x:auto;}html body pre >code a[href]{color:#223388;}article.project h1{font-size:1.7em;}article.project h1,article.project h2,article.project h3,article.project h4,article.project h5,article.project h6{margin:0.2em 0 0.1em 0;text-indent:1em;}article.project >header{text-align:center;}article.project >header img.logo{display:block;margin:auto;max-height:170px;}article.project >header h1{display:inline-block;text-indent:0;font-size:2.5em;}article.project >header .version{vertical-align:bottom;}article.project >header .languages{margin-top:-0.5em;text-transform:capitalize;}article.project >header .description{margin:0;}article.project >header .pages{margin-top:0.5em;font-size:1.2em;text-transform:capitalize;}article.project >header .pages a{display:inline-block;padding:0 0.2em;}article.project >section{margin:1em 0 1em 0;}article.project #index >ul{list-style:none;margin:0;padding:0;}article.project .row label{display:inline-block;min-width:8em;}article.project #system .row{display:flex;}article.project #system #dependencies{display:inline;margin:0;padding:0;}article.project #system #dependencies li{display:inline;padding:0 0.2em;}article.project #system #author label{vertical-align:top;}article.project #system #author ul{display:inline-block;margin:0;padding:0;list-style:none;}article.definition{margin:1em 0 0 0;}article.definition >header h1,article.definition >header h2,article.definition >header h3,article.definition >header h4,article.definition >header h5,article.definition >header h6{text-indent:0;display:inline-block;}article.definition >header ul{display:inline-block;list-style:none;margin:0;padding:0;}article.definition >header ul li{display:inline-block;padding:0 0.2em 0 0;}article.definition >header .visibility{display:none;}article.definition >header .visibility,article.definition >header .type{text-transform:lowercase;}article.definition >header .source-link{visibility:hidden;float:right;}article.definition >header .source-link:after{visibility:visible;content:"[SRC]";}article.definition .docstring{margin:0 0 0 1em;}article.definition .docstring pre{font-size:0.8em;white-space:pre-wrap;}.definition.package >header ul.nicknames{display:inline-block;list-style:none;margin:0;padding:0 0 0 1em;}.definition.package >header ul.nicknames li{display:inline;}.definition.package >header ul.nicknames:before{content:"(";}.definition.package >header ul.nicknames:after{content:")";}.definition.package ul.definitions{margin:0;list-style:none;padding:0 0 0 0.5em;}.definition.callable >header .name:before,.definition.type >header .name:before{content:"(";font-weight:normal;}.definition.callable >header .arguments:after,.definition.type >header .arguments:after{content:")";}.definition.callable >header .arguments .arguments:before,.definition.type >header .arguments .arguments:before{content:"(";}.definition.callable >header .arguments .argument,.definition.type >header .arguments .argument{padding:0;}.definition.callable >header .arguments .argument.lambda-list-keyword,.definition.type >header .arguments .argument.lambda-list-keyword{color:#991155;}.definition li>mark{background:none;border-left:0.3em solid #0088EE;padding-left:0.3em;display:block;}</style> </head> <body> <article class="project"> <header>   <h1>type templates</h1>   <span class="version">4.0.0</span>    <p class="description">A library for defining and expanding templated functions</p>   </header> <section id="documentation"><article><h1 id="about type-templates">About Type-Templates</h1><p>This library allows you to define types and &quot;template functions&quot; that can be expanded into various type-specialised versions to eliminate runtime dispatch overhead. It was specifically designed to implement low-level numerical data types and functionality.</p><h2 id="how to">How To</h2><p>First, let's define a meta-type that can instantiate structure types. For an example, let's implement 3-dimensional vectors, which can hold different element types.</p><code style="display:block" class="code-block" data-language="common lisp"><pre>(define-template-type vec (element-type)
+    (compose-name NIL element-type 'vec)
+  (field (compose-name NIL element-type 'vec '-x)
+         :type element-type :alias (:x))
+  (field (compose-name NIL element-type 'vec '-y)
+         :type element-type :alias (:y))
+  (field (compose-name NIL element-type 'vec '-z)
+         :type element-type :alias (:z)))</pre></code><p>This creates a <code>vec-type</code> meta-type that describes how a <code>vec</code> type is created. Now let's instantiate it:</p><code style="display:block" class="code-block" data-language="common lisp"><pre>(define-vec single-float)
+(define-vec double-float)
+(define-vec fixnum)</pre></code><p>We should now have the structure types <code>single-float-vec</code>, <code>double-float-vec</code>, and <code>fixnum-vec</code>, each with their own field accessors and direct constructors. To present an easier way for users to access the <code>x</code>, <code>y</code> and <code>z</code> slots of the vectors, let's create a dispatch function that'll call the specific slot accessor depending on the argument type.</p><code style="display:block" class="code-block" data-language="common lisp"><pre>(define-type-dispatch x (vec)
+  ((single-float-vec) single-float (single-float-vec-x vec))
+  ((double-float-vec) double-float (double-float-vec-x vec))
+  ((fixnum-vec) fixnum (fixnum-vec-x vec)))</pre></code><p>This will create a function <code>x</code> as well as internal compiler structures to eliminate the runtime dispatch if the types are known ahead. However, you may notice that manually listing the cases like this is rather tedious. Let's create a macro to emit the type dispatcher cases for us.</p><code style="display:block" class="code-block" data-language="common lisp"><pre>(defmacro define-slot-reader (slot)
+  `(define-type-dispatch ,slot (vec)
+     ,@(loop for type in (instances 'vec-type)
+             collect `((,(lisp-type type)) ,(place-type type slot)
+                       ,(place-form type slot 'vec)))))</pre></code><p>This macro goes through all type instances of our meta-type and emits a dispatch matching that type, with the slot's value type as the return type, and the reader form for the <code>vec</code> variable to read out the actual value. If you expand <code>(define-slot-reader x)</code> you should get the same as we manually wrote above.</p><p>Because defining a slot dispatcher is such a common problem, you can also just use <code><a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-SLOT-ACCESSOR" class="xref">define-slot-accessor</a></code>, which will also take care of defining the corresponding writer function.</p><code style="display:block" class="code-block" data-language="common lisp"><pre>(<a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-SLOT-ACCESSOR" class="xref">define-slot-accessor</a> vec-type x x)</pre></code><p>You can see now how this library allows you to reason about structure types and automatically compute a lot more information. To illustrate this even better, let's define a template function that'll implement the dot product.</p><code style="display:block" class="code-block" data-language="common lisp"><pre>(define-template dot element-type (a b)
+  (let ((type (type-instance 'vec-type element-type)))
+    `((declare (type ,(lisp-type type) a b)
+               (return-type ,element-type)
+               inline)
+      (+ ,@(loop for slot in (slots type)
+                 collect `(* ,(place-form type slot a) ,(place-form type slot b)))))))</pre></code><p>Here we make use of the slot iteration, so conceivably the number of slots could also be made variable between <code>vec-type</code> instances, and this template would still operate correctly.</p><p>Also notable are that the additional declarations: <code><a href="#DECLARATION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ARETURN-TYPE" class="xref">return-type</a></code> lets you specify the return type of the resulting function the template generates, and <code>inline</code> lets you specify that the function should be declared inline.</p><p>To now instantiate the template into actual function definitions, we could simply repeat <code>define-dot</code> for every element type we have, or we could do it like this:</p><code style="display:block" class="code-block" data-language="common lisp"><pre>(<a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADO-TYPE-COMBINATIONS" class="xref">do-type-combinations</a> vec-type define-dot)</pre></code><p>This will expand into a call to <code>define-dot</code> for all template arguments that were used to instantiate a <code>vec-type</code>. The names of the functions will follow the scheme of <code>dot/single-float</code>, <code>dot/double-float</code>, etc.</p><p>We'll now again want to define a dispatcher function as an easy entry point for the user. For template-defined functions however we can make use of another shorthand:</p><code style="display:block" class="code-block" data-language="common lisp"><pre><a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TYPE-DISPATCH" class="xref">(define-templated-dispatch dot (a b)
+  ((vec-type 0) dot))</a></pre></code><p>The templated dispatch macro will notice the meta-type, and automatically expand it into all concrete type instances, appending the template arguments to the template name to reach the correct specific version of the template. The <code>0</code> here means that the second argument type should be the same as the first, meaning only <code>(single-float-vec single-float-vec)</code>, etc. will get a branch, but not <code>(single-float-vec fixnum-vec)</code>.</p><p>With this you should have a broad overview of how to use the template system. Please refer to the individual functions used in the tutorial for further information on their capabilities.</p></article></section>   <section id="system"> <h2>System Information</h2>  <div class="row"> <label for="version">Version:</label> <a id="version">4.0.0</a> </div>   <div class="row"> <label for="dependencies">Dependencies:</label> <ul id="dependencies"><li><a class="external" href="https://Shinmera.github.io/documentation-utils/">documentation-utils</a></li><li><a class="external">alexandria</a></li><li><a class="external" href="https://Shinmera.github.io/form-fiddle/">form-fiddle</a></li></ul> </div>   <div class="row" id="author"> <label for="author">Author:</label> <a href="mailto:shinmera@tymoon.eu">Yukari Hafner</a> </div>   <div class="row"> <label for="license">License:</label> <a id="license" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/LICENSE">zlib</a> </div>   <div class="row"> <label for="homepage">Homepage:</label> <a id="homepage" href="https://Shinmera.github.io/type-templates/">https://Shinmera.github.io/type-templates/</a> </div>   <div class="row"> <label for="bug-tracker">Bug Tracker:</label> <a id="bug-tracker" href="https://github.com/Shinmera/type-templates/issues">https://github.com/Shinmera/type-templates/issues</a> </div>   <div class="row"> <label for="sources">Sources:</label> <a id="sources" href="https://github.com/Shinmera/type-templates.git">https://github.com/Shinmera/type-templates.git</a> </div>  </section>    <section id="index"> <h2>Definition Index</h2> <ul> <li> <article class="definition package" id="PACKAGE ORG.SHIRAKUMO.TYPE-TEMPLATES"> <header> <h3> <a href="#PACKAGE%20ORG.SHIRAKUMO.TYPE-TEMPLATES">ORG.SHIRAKUMO.TYPE-TEMPLATES</a> </h3> <ul class="nicknames"></ul>  </header> <div class="docstring"><i>No documentation provided.</i></div> <ul class="definitions"> <li> <article class="definition class" id="CLASS ORG.SHIRAKUMO.TYPE-TEMPLATES:SLOT"> <header> <span class="visibility">EXTERNAL</span> <span class="type">CLASS</span> <h4 class="name"> <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT">SLOT</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments"></ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L49">Source</a>  </header> <div class="docstring"><pre>Represents the metadata of a slot on a template type.
+
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ANAMES" class="xref">NAMES</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3AACCESSOR" class="xref">ACCESSOR</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ALISP-TYPE" class="xref">LISP-TYPE</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3AVALUE" class="xref">VALUE</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3AREAD-ONLY" class="xref">READ-ONLY</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ACOMPUTED" class="xref">COMPUTED</a>
+See <a href="#FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3AREALIZED-SLOT-P" class="xref">REALIZED-SLOT-P</a></pre></div> </article> </li>  <li> <article class="definition class" id="CLASS ORG.SHIRAKUMO.TYPE-TEMPLATES:TEMPLATE-TYPE"> <header> <span class="visibility">EXTERNAL</span> <span class="type">CLASS</span> <h4 class="name"> <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE">TEMPLATE-TYPE</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments"></ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L65">Source</a>  </header> <div class="docstring"><pre>Represents an instantiable type definition.
+
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ALISP-TYPE" class="xref">LISP-TYPE</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3APARENT" class="xref">PARENT</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ACONSTRUCTOR" class="xref">CONSTRUCTOR</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOTS" class="xref">SLOTS</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3AINSTANCES" class="xref">INSTANCES</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATYPE-INSTANCE" class="xref">TYPE-INSTANCE</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT" class="xref">SLOT</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3APLACE" class="xref">PLACE</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3APLACE-FORM" class="xref">PLACE-FORM</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3APLACE-TYPE" class="xref">PLACE-TYPE</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-ARGUMENTS" class="xref">TEMPLATE-ARGUMENTS</a>
+See <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TEMPLATE-TYPE" class="xref">DEFINE-TEMPLATE-TYPE</a>
+See <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TYPE-INSTANCE" class="xref">DEFINE-TYPE-INSTANCE</a></pre></div> </article> </li>  <li> <article class="definition class" id="CLASS ORG.SHIRAKUMO.TYPE-TEMPLATES:TYPE-ALIAS"> <header> <span class="visibility">EXTERNAL</span> <span class="type">CLASS</span> <h4 class="name"> <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATYPE-ALIAS">TYPE-ALIAS</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments"></ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L276">Source</a>  </header> <div class="docstring"><pre>Representation of an alias of another template-type.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a>
+See <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TYPE-ALIAS" class="xref">DEFINE-TYPE-ALIAS</a></pre></div> </article> </li>  <li> <article class="definition condition" id="CONDITION ORG.SHIRAKUMO.TYPE-TEMPLATES:NO-SUCH-INSTANCE"> <header> <span class="visibility">EXTERNAL</span> <span class="type">CONDITION</span> <h4 class="name"> <a href="#CONDITION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ANO-SUCH-INSTANCE">NO-SUCH-INSTANCE</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments"></ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L17">Source</a>  </header> <div class="docstring"><pre>Error signalled when trying to fetch a type instance that does not exist.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition condition" id="CONDITION ORG.SHIRAKUMO.TYPE-TEMPLATES:NO-SUCH-SLOT"> <header> <span class="visibility">EXTERNAL</span> <span class="type">CONDITION</span> <h4 class="name"> <a href="#CONDITION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ANO-SUCH-SLOT">NO-SUCH-SLOT</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments"></ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L10">Source</a>  </header> <div class="docstring"><pre>Error signalled when trying to fetch a slot that does not exist.
+
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT" class="xref">SLOT</a></pre></div> </article> </li>  <li> <article class="definition condition" id="CONDITION ORG.SHIRAKUMO.TYPE-TEMPLATES:NOT-A-TEMPLATE-TYPE"> <header> <span class="visibility">EXTERNAL</span> <span class="type">CONDITION</span> <h4 class="name"> <a href="#CONDITION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ANOT-A-TEMPLATE-TYPE">NOT-A-TEMPLATE-TYPE</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments"></ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L24">Source</a>  </header> <div class="docstring"><pre>Error signalled when trying to coerce a type that does not name a template-type.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition condition" id="CONDITION ORG.SHIRAKUMO.TYPE-TEMPLATES:TEMPLATE-UNFULFILLABLE"> <header> <span class="visibility">EXTERNAL</span> <span class="type">CONDITION</span> <h4 class="name"> <a href="#CONDITION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-UNFULFILLABLE">TEMPLATE-UNFULFILLABLE</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments"></ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L3">Source</a>  </header> <div class="docstring"><pre>Error signalled to notify that the template cannot be expanded for the given arguments.
+
+This is also available as a local function of the same name within
+DEFINE-TEMPLATE, to allow you to easily signal the condition.
+
+See <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TEMPLATE" class="xref">DEFINE-TEMPLATE</a></pre></div> </article> </li>  <li> <article class="definition structure" id="STRUCTURE ORG.SHIRAKUMO.TYPE-TEMPLATES:TYPE-OBJECT"> <header> <span class="visibility">EXTERNAL</span> <span class="type">STRUCTURE</span> <h4 class="name"> <a href="#STRUCTURE%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATYPE-OBJECT">TYPE-OBJECT</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments"></ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L146">Source</a>  </header> <div class="docstring"><pre>Supertype for all structures derived from template-types.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATYPE-INSTANCE" class="xref">TYPE-INSTANCE</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-ARGUMENTS" class="xref">TEMPLATE-ARGUMENTS</a></pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:COMPOSE-NAME"> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ACOMPOSE-NAME">COMPOSE-NAME</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">SEPARATOR</li>    <li class="argument lambda-list-keyword">&amp;REST</li>    <li class="argument">PARTS</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/toolkit.lisp#L26">Source</a>  </header> <div class="docstring"><pre>Compose a symbol out of parts.
+
+The symbol will be interned in the current package.
+Separator should be a string designator that will be injected between
+each part. Each part otherwise is added to the symbol name via
+PRINC-TO-STRING.
+
+See <a href="http://l1sp.org/cl/%2Apackage%2A" class="xref">CL:*PACKAGE*</a>
+See <a href="#FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3AFORMAT-NAME" class="xref">FORMAT-NAME</a></pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:ENUMERATE-COMBINATIONS"> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3AENUMERATE-COMBINATIONS">ENUMERATE-COMBINATIONS</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument lambda-list-keyword">&amp;REST</li>    <li class="argument">COMBINATIONS</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/toolkit.lisp#L41">Source</a>  </header> <div class="docstring"><pre>Returns a list of all possible permutations of the given sets of items.
+
+Eg: (enumerate-combinations '(a b) '(1 2))
+  =&gt; ((a 1) (a 2) (b 1) (b 2))</pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:FORMAT-NAME"> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3AFORMAT-NAME">FORMAT-NAME</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">FORMAT</li>    <li class="argument lambda-list-keyword">&amp;REST</li>    <li class="argument">ARGS</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/toolkit.lisp#L14">Source</a>  </header> <div class="docstring"><pre>Format a new symbol.
+
+The symbol will be interned in the current package.
+The name is case-shuffled to the current readtable case after
+formatting.
+
+See <a href="http://l1sp.org/cl/%2Apackage%2A" class="xref">CL:*PACKAGE*</a>
+See <a href="http://l1sp.org/cl/format" class="xref">CL:FORMAT</a>
+See <a href="#FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ACOMPOSE-NAME" class="xref">COMPOSE-NAME</a></pre></div> </article> </li>  <li> <article class="definition function callable" id="FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:REALIZED-SLOT-P"> <header> <span class="visibility">EXTERNAL</span> <span class="type">FUNCTION</span> <h4 class="name"> <a href="#FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3AREALIZED-SLOT-P">REALIZED-SLOT-P</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">SLOT</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L62">Source</a>  </header> <div class="docstring"><pre>Returns true if the slot is realised on the structure and holds a value, and isn't constant.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT" class="xref">SLOT (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:ACCESSOR"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3AACCESSOR">ACCESSOR</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">OBJECT</li>  </ul>  </header> <div class="docstring"><pre>Returns the name of the accessor function for the slot.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT" class="xref">SLOT (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:COMPUTE-SLOTS"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ACOMPUTE-SLOTS">COMPUTE-SLOTS</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TEMPLATE-TYPE</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L36">Source</a>  </header> <div class="docstring"><pre>Returns a list of all SLOT instances for the type instance.
+
+This returns all slots, including inherited ones.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT" class="xref">SLOT (type)</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOTS" class="xref">SLOTS</a>
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:COMPUTE-TYPE-INSTANCE-DEFINITION"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ACOMPUTE-TYPE-INSTANCE-DEFINITION">COMPUTE-TYPE-INSTANCE-DEFINITION</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TEMPLATE-TYPE</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L38">Source</a>  </header> <div class="docstring"><pre>Computes the form used to define a type instance of the template type.
+
+Users may add methods to this that include the results of
+CALL-NEXT-METHOD in their return value, in order to append extra
+definitions, such as for PRINT-OBJECT.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:CONSTRUCTOR"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ACONSTRUCTOR">CONSTRUCTOR</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TEMPLATE-TYPE</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L32">Source</a>  </header> <div class="docstring"><pre>Returns the name of the constructor function for the type instance.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:DIRECT-SLOTS"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADIRECT-SLOTS">DIRECT-SLOTS</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TEMPLATE-TYPE</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L35">Source</a>  </header> <div class="docstring"><pre>Returns the list of SLOT instances for the type instance.
+
+This only returns slots that were defined directly for this instance,
+excluding inherited slots.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT" class="xref">SLOT (type)</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOTS" class="xref">SLOTS</a>
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:INSTANCES"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3AINSTANCES">INSTANCES</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TEMPLATE-TYPE</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L43">Source</a>  </header> <div class="docstring"><pre>Returns a list of all instances of the template type.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:(SETF INSTANCES)"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3A%28SETF%20INSTANCES%29">(SETF INSTANCES)</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">NEW-VALUE</li>    <li class="argument">OBJECT</li>  </ul>  </header> <div class="docstring"><i>No documentation provided.</i></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:LISP-TYPE"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ALISP-TYPE">LISP-TYPE</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TEMPLATE-TYPE</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L33">Source</a>  </header> <div class="docstring"><pre>Returns the name of the lisp-type for the type instance.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:NAMES"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ANAMES">NAMES</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">OBJECT</li>  </ul>  </header> <div class="docstring"><pre>Returns the list of alternate names for the slot.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT" class="xref">SLOT (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:PLACE"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3APLACE">PLACE</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TEMPLATE-TYPE</li>    <li class="argument">QUALIFIER</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L40">Source</a>  </header> <div class="docstring"><pre>Returns the name of the place for the given slot.
+
+QUALIFIER can either be a SLOT instance or the name of a slot on the
+TEMPLATE-TYPE.
+
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT" class="xref">SLOT</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3APLACE-FORM" class="xref">PLACE-FORM</a>
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:PLACE-FORM"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3APLACE-FORM">PLACE-FORM</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TEMPLATE-TYPE</li>    <li class="argument">QUALIFIER</li>    <li class="argument">VAR</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L41">Source</a>  </header> <div class="docstring"><pre>Returns an accessor form of the place for the given slot.
+
+This form can be used to read or SETF the value off the slot on the
+instance bound to the symbol passed in VAR.
+
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT" class="xref">SLOT</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3APLACE" class="xref">PLACE</a>
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:PLACE-TYPE"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3APLACE-TYPE">PLACE-TYPE</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TEMPLATE-TYPE</li>    <li class="argument">QUALIFIER</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L42">Source</a>  </header> <div class="docstring"><pre>Returns the lisp-type of the value stored in the slot.
+
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT" class="xref">SLOT</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3APLACE" class="xref">PLACE</a>
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:READ-ONLY"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3AREAD-ONLY">READ-ONLY</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">OBJECT</li>  </ul>  </header> <div class="docstring"><pre>Returns true if the slot can only be read, but not set.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT" class="xref">SLOT (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:SLOT"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT">SLOT</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TEMPLATE-TYPE</li>    <li class="argument">QUALIFIER</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L39">Source</a>  </header> <div class="docstring"><pre>Find a slot with the given qualifier on the type instance.
+
+If the slot does not exist, an error of type NO-SUCH-SLOT is
+signalled.
+
+See <a href="#CONDITION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ANO-SUCH-SLOT" class="xref">NO-SUCH-SLOT (type)</a>
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT" class="xref">SLOT (type)</a>
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:SLOTS"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOTS">SLOTS</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TEMPLATE-TYPE</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L34">Source</a>  </header> <div class="docstring"><pre>Returns the list of SLOT instances for the type instance.
+
+This returns all slots, including inherited ones.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT" class="xref">SLOT (type)</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADIRECT-SLOTS" class="xref">DIRECT-SLOTS</a>
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:TEMPLATE-ARGUMENTS"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-ARGUMENTS">TEMPLATE-ARGUMENTS</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TEMPLATE-TYPE</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L31">Source</a>  </header> <div class="docstring"><pre>Returns the arguments of the template instance or template type.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:TEMPLATE-TYPE"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE">TEMPLATE-TYPE</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TYPE</li>  </ul>  </header> <div class="docstring"><pre>Returns the TEMPLATE-TYPE named by the given symbol.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:TYPE-INSTANCE"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATYPE-INSTANCE">TYPE-INSTANCE</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">BASE-TYPE</li>    <li class="argument lambda-list-keyword">&amp;REST</li>    <li class="argument">TEMPLATE-ARGS</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L30">Source</a>  </header> <div class="docstring"><pre>Returns an instance of the given template type that fulfils the given template arguments.
+
+If no such instance exists, an error of type NO-SUCH-INSTANCE is
+signalled.
+
+See <a href="#CONDITION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ANO-SUCH-INSTANCE" class="xref">NO-SUCH-INSTANCE</a>
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition generic-function callable" id="GENERIC-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:VALUE"> <header> <span class="visibility">EXTERNAL</span> <span class="type">GENERIC-FUNCTION</span> <h4 class="name"> <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3AVALUE">VALUE</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">OBJECT</li>  </ul>  </header> <div class="docstring"><pre>Returns the constant value form for the slot.
+
+If the slot is realised and does not have a constant value, an error
+is signalled.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT" class="xref">SLOT (type)</a>
+See <a href="#FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3AREALIZED-SLOT-P" class="xref">REALIZED-SLOT-P</a></pre></div> </article> </li>  <li> <article class="definition macro callable" id="MACRO-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:DEFINE-ALIAS"> <header> <span class="visibility">EXTERNAL</span> <span class="type">MACRO</span> <h4 class="name"> <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-ALIAS">DEFINE-ALIAS</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">FUN</li>    <li class="argument">ARGS</li>    <li class="argument lambda-list-keyword">&amp;BODY</li>    <li class="argument">EXPANSION</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/template.lisp#L255">Source</a>  </header> <div class="docstring"><pre>Define a simple alias function.
+
+EXPANSION should evaluate to a form that is used in the function
+body. This is similar to defining a compiler-macro, except that it
+tries to automatically define both a compiler macro and a regular
+function definition at once.</pre></div> </article> </li>  <li> <article class="definition macro callable" id="MACRO-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:DEFINE-DEPENDENT-DISPATCH-TYPE"> <header> <span class="visibility">EXTERNAL</span> <span class="type">MACRO</span> <h4 class="name"> <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-DEPENDENT-DISPATCH-TYPE">DEFINE-DEPENDENT-DISPATCH-TYPE</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">NAME</li>    <ul class="arguments"> <li class="argument">TYPE-LIST</li>  <li class="argument">I</li>  <li class="argument lambda-list-keyword">&amp;REST</li>  <li class="argument">ARGS</li> </ul>    <li class="argument lambda-list-keyword">&amp;BODY</li>    <li class="argument">BODY</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/template.lisp#L184">Source</a>  </header> <div class="docstring"><pre>Defines a function that can be used to compute more complex dependent types in templated dispatch function definitions.
+
+TYPE-LIST is bound to the list of ARGTYPEs in the expansion. I is
+bound to the index of the current dependent dispatch type to
+expand. ARGS are bound to the respective arguments of the call.
+
+BODY should return a concrete type to use in place of the dependent
+type expression, or NIL if there is no dependent type and the
+expansion should be eliminated.
+
+See <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TEMPLATED-DISPATCH" class="xref">DEFINE-TEMPLATED-DISPATCH</a></pre></div> </article> </li>  <li> <article class="definition macro callable" id="MACRO-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:DEFINE-SLOT-ACCESSOR"> <header> <span class="visibility">EXTERNAL</span> <span class="type">MACRO</span> <h4 class="name"> <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-SLOT-ACCESSOR">DEFINE-SLOT-ACCESSOR</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TEMPLATE-TYPE</li>    <li class="argument">NAME</li>    <li class="argument">SLOT</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/template.lisp#L279">Source</a>  </header> <div class="docstring"><pre>Shorthand to define a dispatcher for an accessor of a given slot of a template type.
+
+See <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TYPE-DISPATCH" class="xref">DEFINE-TYPE-DISPATCH</a>
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3AINSTANCES" class="xref">INSTANCES</a>
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ASLOT" class="xref">SLOT</a></pre></div> </article> </li>  <li> <article class="definition macro callable" id="MACRO-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:DEFINE-TEMPLATE"> <header> <span class="visibility">EXTERNAL</span> <span class="type">MACRO</span> <h4 class="name"> <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TEMPLATE">DEFINE-TEMPLATE</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">NAME</li>    <li class="argument lambda-list-keyword">&amp;REST</li>    <li class="argument">ARGS</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/template.lisp#L4">Source</a>  </header> <div class="docstring"><pre>Define a new template function.
+
+NAME will be used as the prefix for all emitted template instances.
+NAME will be concatenated together with DEFINE- to name the macro that
+is used to emit template instances.
+
+The structure of a DEFINE-TEMPLATE use should be as follows:
+
+  (define-template NAME TEMPLATE-ARGUMENT+ INSTANCE-LAMBDA-LIST BODY*)
+
+TEMPLATE-ARGUMENTS should be symbols naming the variables bound to the
+template arguments during BODY. INSTANCE-LAMBDA-LIST should be the
+lambda-list of an emitted function instance. BODY should be any number
+of forms which return a list of body forms to emit into the resulting
+function instance.
+
+The first of those forms may be a DECLARE expression, with the
+following special declarations:
+
+  TYPE         --- Used to declare types of the function instance's
+    arguments. Together with the RETURN-TYPE these will be used to
+    create an FTYPE declaration for the function instance.
+  RETURN-TYPE  --- The function instance will declare this as the type
+    of the return value.
+  INLINE       --- The function instance will be declared inline
+
+The resulting definition macro will take the template arguments as
+arguments as well as an optional name for the resulting function
+instance. If no name is given, the name is automatically composed out
+off the template name and the template arguments, separated by a
+slash.
+
+A local function is bound during evaluation of BODY named
+TEMPLATE-UNFULFILLABLE. When called, a TEMPLATE-UNFULFILLABLE error is
+signalled to signify that the given template arguments are not a valid
+combination.
+
+See <a href="#FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ACOMPOSE-NAME" class="xref">COMPOSE-NAME</a>
+See <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TEMPLATED-DISPATCH" class="xref">DEFINE-TEMPLATED-DISPATCH</a></pre></div> </article> </li>  <li> <article class="definition macro callable" id="MACRO-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:DEFINE-TEMPLATE-TYPE"> <header> <span class="visibility">EXTERNAL</span> <span class="type">MACRO</span> <h4 class="name"> <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TEMPLATE-TYPE">DEFINE-TEMPLATE-TYPE</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">NAME</li>    <li class="argument">TEMPLATE-ARGS</li>    <li class="argument">NAME-CONSTRUCTOR</li>    <li class="argument lambda-list-keyword">&amp;BODY</li>    <li class="argument">BODY</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L227">Source</a>  </header> <div class="docstring"><pre>Define a new template type.
+
+NAME will be concatenated together with -TYPE and interned into the
+local package to produce the name of the template type.
+NAME will also be concatenated together with DEFINE- to name a macro
+used to define instances of the template type.
+
+TEMPLATE-ARGS should be a list of arguments the template accepts.
+NAME-CONSTRUCTOR should be a form that, when evaluated, returns a
+symbol naming the type instance for the given template arguments.
+
+BODY may accept the following keyword arguments:
+:INCLUDE  --- Specify another template-type to use as the supertype.
+   This is done via a list that should be composed out of the
+   template-type name and the template arguments to supply for that
+   supertype. You may use the name of local template arguments.
+
+The rest of the BODY should be a number of forms. The forms are
+evaluated in an environment where the FIELD function is bound and
+should use it to emit information about the slots on the resulting
+type instance.
+
+See FIELD
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a>
+See <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TYPE-INSTANCE" class="xref">DEFINE-TYPE-INSTANCE</a></pre></div> </article> </li>  <li> <article class="definition macro callable" id="MACRO-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:DEFINE-TEMPLATED-DISPATCH"> <header> <span class="visibility">EXTERNAL</span> <span class="type">MACRO</span> <h4 class="name"> <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TEMPLATED-DISPATCH">DEFINE-TEMPLATED-DISPATCH</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">NAME</li>    <li class="argument">ARGS</li>    <li class="argument lambda-list-keyword">&amp;BODY</li>    <li class="argument">BODY</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/template.lisp#L226">Source</a>  </header> <div class="docstring"><pre>Define a dispatcher function using type template information.
+
+BODY accepts the following keyword arguments:
+:IGNORE-TEMPLATE-TYPES --- A list of template type names that should
+  be ignored for the resulting template invocation's template
+  arguments.
+
+The rest of the body should have the following structure:
+
+  EXPANSIONS   ::= EXPANSION*
+  EXPANSION    ::= ((ARGTYPE*) TEMPLATE TEMPLATE-ARG*)
+                 | ((ARGTYPE*) (TEMPLATE TEMPLATE-ARG*) ARG*)
+  ARGTYPE      ::= TEMPLATE-TYPE
+                 | REFERENCE
+                 | DEPENDENT
+                 | REF-ARGUMENT
+  TEMPLATE-TYPE --- The name of a template-type, for each of the
+    instances of which this expansion will be instantiated.
+  REFERENCE     --- A number duplicating the concrete type at that
+    position of the ARGTYPE list.
+  DEPENDENT     ::= #'(DEPENDENT-NAME ARG*)
+  ALIAS-NAME    --- The name of a dependent dispatch type function.
+  REF-ARGUMENT  --- A vector of two elements, the first being the
+    position of the template type instance to reference in the ARGTYPE
+    list, and the second being the number of the template argument of
+    that template type instance to use.
+  TEMPLATE      --- The name of the template to call.
+  TEMPLATE-ARG  --- Additional template arguments that will be
+    prepended before the combined template arguments of the
+    TEMPLATE-TYPE instance expanded for this EXPANSION. Note that this
+    includes *all* template arguments of all template-type instances
+    in the ARGTYPES list that aren't excluded via the
+    IGNORE-TEMPLATE-TYPES option above.
+  ARG           --- An argument to pass to the function call.
+
+The effective function call will be computed based on the template
+name and the template arguments, inserting a slash between each as per
+the standard naming convention.
+
+See <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TEMPLATE" class="xref">DEFINE-TEMPLATE</a>
+See <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TYPE-DISPATCH" class="xref">DEFINE-TYPE-DISPATCH</a>
+See <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-DEPENDENT-DISPATCH-TYPE" class="xref">DEFINE-DEPENDENT-DISPATCH-TYPE</a>
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition macro callable" id="MACRO-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:DEFINE-TYPE-ALIAS"> <header> <span class="visibility">EXTERNAL</span> <span class="type">MACRO</span> <h4 class="name"> <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TYPE-ALIAS">DEFINE-TYPE-ALIAS</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">NAME</li>    <li class="argument lambda-list-keyword">&amp;REST</li>    <li class="argument">TYPES</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L284">Source</a>  </header> <div class="docstring"><pre>Define an alias for a number of template type instances.
+
+NAME will name a lisp-type of NAME.
+NAME will also be concatenated together with -TYPE to name a
+TEMPLATE-TYPE that holds the type instances.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATYPE-ALIAS" class="xref">TYPE-ALIAS</a></pre></div> </article> </li>  <li> <article class="definition macro callable" id="MACRO-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:DEFINE-TYPE-DISPATCH"> <header> <span class="visibility">EXTERNAL</span> <span class="type">MACRO</span> <h4 class="name"> <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TYPE-DISPATCH">DEFINE-TYPE-DISPATCH</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">NAME</li>    <li class="argument">ARGS</li>    <li class="argument lambda-list-keyword">&amp;BODY</li>    <li class="argument">EXPANSIONS</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/template.lisp#L128">Source</a>  </header> <div class="docstring"><pre>Define a dispatcher function.
+
+EXPANSIONS should have the following structure:
+
+  EXPANSIONS ::= EXPANSION*
+  EXPANSION  ::= ((ARGTYPE*) RETTYPE EXPANSION)
+  ARGTYPE    --- A lisp-type for the corresponding lambda-list
+    variable. If the number of argtypes is shorter than the number of
+    variables in the lambda-list, the remainder are automatically
+    bound to NULL.
+  RETTYPE    --- A lisp-type for the type of the value returned in
+    this expansion.
+  EXPANSION  --- A form that the type dispatcher will expand into
+    should this branch of argument types match.
+
+See <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TEMPLATED-DISPATCH" class="xref">DEFINE-TEMPLATED-DISPATCH</a></pre></div> </article> </li>  <li> <article class="definition macro callable" id="MACRO-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:DEFINE-TYPE-INSTANCE"> <header> <span class="visibility">EXTERNAL</span> <span class="type">MACRO</span> <h4 class="name"> <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TYPE-INSTANCE">DEFINE-TYPE-INSTANCE</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <ul class="arguments"> <li class="argument">TEMPLATE-TYPE</li>  <li class="argument">NAME</li> </ul>    <li class="argument lambda-list-keyword">&amp;BODY</li>    <li class="argument">ARGS</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/type.lisp#L207">Source</a>  </header> <div class="docstring"><pre>Define an instance of a template type using the specified name and template arguments.
+
+See <a href="#GENERIC-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ACOMPUTE-TYPE-INSTANCE-DEFINITION" class="xref">COMPUTE-TYPE-INSTANCE-DEFINITION</a>
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a></pre></div> </article> </li>  <li> <article class="definition macro callable" id="MACRO-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:DEFINE-TYPE-WITH-CONVERTER"> <header> <span class="visibility">EXTERNAL</span> <span class="type">MACRO</span> <h4 class="name"> <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TYPE-WITH-CONVERTER">DEFINE-TYPE-WITH-CONVERTER</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">NAME</li>    <li class="argument">BASE-TYPE</li>    <ul class="arguments"> <li class="argument">VALUE</li> </ul>    <li class="argument lambda-list-keyword">&amp;BODY</li>    <li class="argument">CONVERSION</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/toolkit.lisp#L89">Source</a>  </header> <div class="docstring"><pre>Define an alias for a longer lisp type with a conversion function to coerce values to fit within that type.
+
+BASE-TYPE should be the type this is an alias for, and CONVERSION the
+body of the function used to coerce any value to the requested type.</pre></div> </article> </li>  <li> <article class="definition macro callable" id="MACRO-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:DO-COMBINATIONS"> <header> <span class="visibility">EXTERNAL</span> <span class="type">MACRO</span> <h4 class="name"> <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADO-COMBINATIONS">DO-COMBINATIONS</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TEMPLATE</li>    <li class="argument lambda-list-keyword">&amp;REST</li>    <li class="argument">ARGUMENT-COMBINATIONS</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/template.lisp#L30">Source</a>  </header> <div class="docstring"><pre>Expand all possible combinations of arguments into forms.
+
+This will try to expand into all permutations off template arguments
+for the given template-type for which the template does not signal a
+TEMPLATE-UNFULFILLABLE error.
+
+See <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADEFINE-TEMPLATE" class="xref">DEFINE-TEMPLATE</a>
+See <a href="#CONDITION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-UNFULFILLABLE" class="xref">TEMPLATE-UNFULFILLABLE</a>
+See <a href="#FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3AENUMERATE-COMBINATIONS" class="xref">ENUMERATE-COMBINATIONS</a></pre></div> </article> </li>  <li> <article class="definition macro callable" id="MACRO-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:DO-INSTANCE-COMBINATIONS"> <header> <span class="visibility">EXTERNAL</span> <span class="type">MACRO</span> <h4 class="name"> <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADO-INSTANCE-COMBINATIONS">DO-INSTANCE-COMBINATIONS</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TEMPLATE</li>    <li class="argument lambda-list-keyword">&amp;REST</li>    <li class="argument">TYPE-TEMPLATES</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/template.lisp#L45">Source</a>  </header> <div class="docstring"><pre>Expand all lisp-type names for instances of the given template-types.
+
+This is useful if the template accepts type instance names for
+template-arguments.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a>
+See <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADO-COMBINATIONS" class="xref">DO-COMBINATIONS</a></pre></div> </article> </li>  <li> <article class="definition macro callable" id="MACRO-FUNCTION ORG.SHIRAKUMO.TYPE-TEMPLATES:DO-TYPE-COMBINATIONS"> <header> <span class="visibility">EXTERNAL</span> <span class="type">MACRO</span> <h4 class="name"> <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADO-TYPE-COMBINATIONS">DO-TYPE-COMBINATIONS</a> </h4> <ul class="qualifiers"></ul> <ul class="arguments">  <li class="argument">TYPE</li>    <li class="argument">TEMPLATE</li>    <li class="argument lambda-list-keyword">&amp;REST</li>    <li class="argument">OTHER-TEMPLATE-ARGS</li>  </ul>  <a class="source-link" href="https://github.com/Shinmera/type-templates/blob/99f41d87bc938966beb12958e319d4e446078f98/template.lisp#L37">Source</a>  </header> <div class="docstring"><pre>Expand all possible type arguments for instances of the given template-type.
+
+OTHER-TEMPLATE-ARGS can be further permutation lists that precede the
+arguments of the template type instances.
+
+This is useful if the template accepts the same template arguments as
+the template type.
+
+See <a href="#CLASS%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ATEMPLATE-TYPE" class="xref">TEMPLATE-TYPE (type)</a>
+See <a href="#MACRO-FUNCTION%20ORG.SHIRAKUMO.TYPE-TEMPLATES%3ADO-COMBINATIONS" class="xref">DO-COMBINATIONS</a></pre></div> </article> </li> </ul> </article> </li> </ul> </section>  </article> <script>window.addEventListener("DOMContentLoaded", function(){
+    var unmarkElement = function(el){
+        if(el.tagName === "mark" || el.tagName === "MARK"){
+            [].forEach.call(el.childNodes, function(child){
+                el.parentNode.insertBefore(child, el);
+            });
+            el.parentNode.removeChild(el);
+        }else if(el.parentNode.tagName === "mark"){
+            return unmarkElement(el.parentNode);
+        }
+        return null;
+    }
+
+    var unmarkAll = function(root){
+        root = root || document;
+        [].forEach.call(root.querySelectorAll("mark"), unmarkElement);
+    }
+    
+    var markElement = function(el){
+        if(el.parentNode.tagName === "mark" || el.parentNode.tagName === "MARK"){
+            return el.parentNode;
+        } else {
+            unmarkAll();
+            var marked = document.createElement("mark");
+            el.parentNode.insertBefore(marked, el);
+            marked.appendChild(el);
+            return marked;
+        }
+    }
+
+    var markFragmented = function(){
+        if(window.location.hash){
+            var el = document.getElementById(decodeURIComponent(window.location.hash.substr(1)));
+            if(el) markElement(el);
+        }
+    }
+
+    var registerXrefLink = function(link){
+        var el = document.getElementById(decodeURIComponent(link.getAttribute("href").substr(1)));
+        if(el){
+            link.addEventListener("click", function(){
+                markElement(el);
+            });
+        }
+    }
+
+    var registerXrefLinks = function(root){
+        root = root || document;
+        [].forEach.call(root.querySelectorAll("a.xref"), registerXrefLink);
+    }
+
+    markFragmented();
+    registerXrefLinks();
+}); </script> </body> </html> 

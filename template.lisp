@@ -42,9 +42,9 @@
                       (loop for instance in (instances type)
                             collect (nth i (template-arguments instance)))))))
 
-(defmacro do-instance-combinations (template &rest templates)
+(defmacro do-instance-combinations (template &rest type-templates)
   `(do-combinations ,template
-     ,@(loop for type in templates
+     ,@(loop for type in type-templates
              collect (loop for instance in (instances type)
                            collect (lisp-type instance)))))
 
@@ -101,6 +101,30 @@
                                                `(the (values ,rettype &optional) (progn ,@body))))))))))
       (emit-dispatch args tree))))
 
+#+sbcl
+(defun emit-transform-dispatch (args parts)
+  (let ((tree (merge-identical-branches
+               (duplicate-subtype-branches
+                (prefix-tree
+                 (loop for (type rettype . expansion) in parts
+                       for i from 0
+                       collect (append type i)))))))
+    (labels ((emit-dispatch (args types)
+               `(cond
+                  ,@(loop for (type . rest) in types
+                          collect `((sb-kernel:types-equal-or-intersect ,(first args) (sb-kernel:specifier-type ',type))
+                                    ,(if (consp rest)
+                                         (emit-dispatch (rest args) rest)
+                                         (destructuring-bind (rettype . body) (rest (nth rest parts))
+                                           (if (eql T rettype)
+                                               `'(progn ,@body)
+                                               `'(the (values ,rettype &optional) (progn ,@body))))))))))
+      `(let ,(loop for arg in args collect `(,arg (etypecase ,arg
+                                                    (sb-c::lvar (sb-c::lvar-type ,arg))
+                                                    (null (sb-kernel:specifier-type 'null))
+                                                    (cons (sb-kernel:specifier-type 'list)))))
+         ,(emit-dispatch args tree)))))
+
 (defmacro define-type-dispatch (name args &body expansions)
   (let* ((argvars (lambda-list-variables args))
          (expansions (loop for expansion in expansions
@@ -145,6 +169,10 @@
                                    (sb-c::specifier-type ',rettype)))
                  (T (sb-c::specifier-type T)))))
        ;; NOTE: The defoptimizer isn't needed, SBCL can derive the type on its own just fine.
+       ;; FIXME: make this work correctly.
+       #++
+       (sb-c:deftransform ,name (,args)
+         ,(emit-transform-dispatch argvars expansions))
        #+sbcl
        ,@(loop for (type result . body) in (reverse expansions)
                ;; FIXME: this is not great. optional placement should be better.

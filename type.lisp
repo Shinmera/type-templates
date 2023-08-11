@@ -14,6 +14,13 @@
                                  (slot-value c 'qualifier)
                                  (slot-value c 'type)))))
 
+(define-condition no-such-instance (error)
+  ((template :initarg :template)
+   (arguments :initarg :arguments))
+  (:report (lambda (c s) (format s "No instance of template type~%  ~s~%with arguments~%  ~s"
+                                 (slot-value c 'template)
+                                 (slot-value c 'arguments)))))
+
 (define-condition not-a-template-type (error)
   ((type :initarg :type))
   (:report (lambda (c s) (format s "This is not a template type:~%  ~s"
