@@ -24,7 +24,7 @@
                       finally (return str)))))))
 
 (defun compose-name (separator &rest parts)
-  (let ((separator (string separator)))
+  (let ((separator (if separator (string separator) "")))
     (intern
      (with-output-to-string (out)
        (flet ((s (a)
