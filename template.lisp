@@ -291,4 +291,10 @@
                  for slot-instance = (slot type slot)
                  unless (read-only slot-instance)
                  collect `((,(lisp-type slot-instance) ,(lisp-type type)) ,(lisp-type slot-instance)
-                           (setf ,(place-form type slot 'obj) value)))))))
+                           (setf ,(place-form type slot 'obj) value))
+                 ;; Automatically add type converter call if there is one.
+                 unless (or (read-only slot-instance)
+                            (not (symbolp (lisp-type slot-instance)))
+                            (not (fboundp (lisp-type slot-instance))))
+                 collect `((T ,(lisp-type type)) ,(lisp-type slot-instance)
+                           (setf ,(place-form type slot 'obj) (,(lisp-type slot-instance) value))))))))
