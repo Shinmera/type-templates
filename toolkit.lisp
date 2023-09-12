@@ -49,9 +49,12 @@
 (defun prefix-tree (combinations)
   (let ((table (make-hash-table :test 'eql)))
     (loop for (car . cdr) in combinations
-          do (if (consp cdr)
-                 (push cdr (gethash car table))
-                 (setf (gethash car table) cdr)))
+          do (cond ((not (consp cdr))
+                    (setf (gethash car table) cdr))
+                   ((gethash car table)
+                    (setf (cdr (last (gethash car table))) (list cdr)))
+                   (T
+                    (setf (gethash car table) (list cdr)))))
     (loop for key being the hash-keys of table
           for combinations being the hash-values of table
           collect (list* key (if (listp combinations)
