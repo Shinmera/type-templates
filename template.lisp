@@ -27,10 +27,10 @@
                            ,@(remove 'inline (declarations body)))
                   ,@(remove-if #'declaration-p body)))))))))
 
-(defmacro do-combinations (template &rest argument-combinations)
+(defmacro do-combinations (&environment env template &rest argument-combinations)
   (destructuring-bind (template &optional name) (enlist template)
     `(progn ,@(loop for combination in (apply #'enumerate-combinations argument-combinations)
-                    when (handler-case (funcall (macro-function template) `(,template ,@combination) NIL)
+                    when (handler-case (funcall (macro-function template env) `(,template ,@combination) NIL)
                            (template-unfulfillable () NIL))
                     collect `(,template ,@combination ,@(if name (list (apply #'format-name name combination))))))))
 
