@@ -149,7 +149,7 @@
       (setf (elt argtypes (1+ (position '&rest argtypes))) 'T))
     `(progn
        #-sbcl (declaim (inline ,name))
-       #-sbcl (declare (ftype (function ,argtypes (values ,rettype &optional)) ,name))
+       #-sbcl (declaim (ftype (function ,argtypes (values ,rettype &optional)) ,name))
        (defun ,name ,args
          (declare (optimize speed (debug 1) (safety 1) (compilation-speed 0)))
          ,(emit-type-dispatch argvars expansions))
