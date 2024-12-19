@@ -47,7 +47,7 @@
             collect (list comb))))
 
 (defun prefix-tree (combinations)
-  (let ((table (make-hash-table :test 'eql)))
+  (let ((table (make-hash-table :test 'equal)))
     (loop for (car . cdr) in combinations
           do (cond ((not (consp cdr))
                     (setf (gethash car table) cdr))
