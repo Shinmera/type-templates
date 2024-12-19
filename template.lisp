@@ -48,6 +48,12 @@
              collect (loop for instance in (instances type)
                            collect (lisp-type instance)))))
 
+(defun delete-subsequent-duplicates (choices)
+  (let ((pure ()))
+    (loop for choice in choices
+          do (pushnew choice pure :key #'car :test #'equal))
+    (nreverse pure)))
+
 (defun merge-identical-branches (branches)
   (labels ((recurse (branches)
              (let ((pure ()))
@@ -63,7 +69,7 @@
                (setf branches (reverse pure)))
              (loop for cons in branches
                    do (when (consp (cdr cons))
-                        (setf (cdr cons) (recurse (cdr cons)))))
+                        (setf (cdr cons) (delete-subsequent-duplicates (recurse (cdr cons))))))
              branches))
     (recurse branches)))
 
@@ -72,7 +78,7 @@
              (loop for branch in branches
                    for tt = (car branch)
                    do (loop for (ott . osub) in branches
-                            do (when (and (not (eq tt ott))
+                            do (when (and (not (equal tt ott))
                                           (subtypep tt ott)
                                           (listp (cdr branch)))
                                  ;; If this is a subtype, clone all branches of the supertype
