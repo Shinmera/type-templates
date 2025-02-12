@@ -79,7 +79,10 @@
 (defun declared-return-type (forms)
   (loop for declaration in (declarations forms)
         when (and (listp declaration) (eql 'return-type (first declaration)))
-        return (second declaration)
+        return (let ((type (second declaration)))
+                 (if (and (consp type) (eql 'values (first type)))
+                     type
+                     `(values ,type &optional)))
         finally (return T)))
 
 (declaim (declaration return-type))
