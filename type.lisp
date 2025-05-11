@@ -184,7 +184,7 @@
 
        (defmethod make-load-form ((,name ,name) &optional env)
          (declare (ignore env))
-         (list ',constructor ,@(loop for slot in slots
+         (list ',constructor ,@(loop for slot in (slots type)
                                      when (realized-slot-p slot)
                                      collect `(,(accessor slot) ,name))))
 
