@@ -4,9 +4,9 @@
   :author "Yukari Hafner <shinmera@tymoon.eu>"
   :maintainer "Yukari Hafner <shinmera@tymoon.eu>"
   :description "A library for defining and expanding templated functions"
-  :homepage "https://Shinmera.github.io/type-templates/"
-  :bug-tracker "https://github.com/Shinmera/type-templates/issues"
-  :source-control (:git "https://github.com/Shinmera/type-templates.git")
+  :homepage "https://shinmera.com/docs/type-templates/"
+  :bug-tracker "https://shinmera.com/project/type-templates/issues"
+  :source-control (:git "https://shinmera.com/project/type-templates.git")
   :serial T
   :components ((:file "package")
                (:file "toolkit")
